@@ -7,6 +7,7 @@ import { Toolbar } from './Toolbar';
 import { autoSave, loadAutoSave } from '../store/persistence';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useUndoRedo } from '../hooks/useUndoRedo';
+import { HelpOverlay } from './HelpOverlay';
 
 export function EditorLayout() {
   const loadData = useEditorStore((s) => s.loadData);
@@ -110,6 +111,9 @@ export function EditorLayout() {
           <Inspector />
         </aside>
       </div>
+
+      {/* Help overlay */}
+      <HelpOverlay />
     </div>
   );
 }

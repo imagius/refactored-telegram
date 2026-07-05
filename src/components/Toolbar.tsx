@@ -212,6 +212,18 @@ export function Toolbar({ undo, redo, canUndo, canRedo, onZoomFit }: ToolbarProp
         🗑 Clear
       </button>
 
+      {/* Help */}
+      <button
+        onClick={() => {
+          // Dispatch a synthetic '?' keydown to toggle the help overlay
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
+        }}
+        className="rounded border border-factorio-border bg-factorio-bg px-2 py-0.5 text-xs text-factorio-text hover:bg-factorio-border"
+        title="Show keyboard shortcuts (?)"
+      >
+        ? Help
+      </button>
+
       {/* Stats on the right */}
       <div className="ml-auto flex gap-3 text-xs text-gray-400">
         {machines.length > 0 && (
