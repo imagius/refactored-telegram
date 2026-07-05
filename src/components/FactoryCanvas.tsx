@@ -1,11 +1,80 @@
-import { useRef, useState, useEffect } from 'react';
-import { Stage, Layer, Rect, Text, Group } from 'react-konva';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { Stage, Layer, Rect, Text, Group, Circle, Arrow, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore, type PlacedMachine } from '../store/editorStore';
+import { getPortPosition, type ConnectionSide } from '../types/connections';
+import { useFlowSolver } from '../hooks/useFlowSolver';
 
 const MACHINE_SIZE = 60;
+const PORT_RADIUS = 5;
 
-function MachineNode({ machine }: { machine: PlacedMachine }) {
+const SIDES: ConnectionSide[] = ['top', 'right', 'bottom', 'left'];
+
+// Port offsets relative to machine top-left (machine is rendered at x,y as top-left of group)
+const SIDE_OFFSETS: Record<ConnectionSide, { x: number; y: number }> = {
+  top: { x: MACHINE_SIZE / 2, y: 0 },
+  right: { x: MACHINE_SIZE, y: MACHINE_SIZE / 2 },
+  bottom: { x: MACHINE_SIZE / 2, y: MACHINE_SIZE },
+  left: { x: 0, y: MACHINE_SIZE / 2 },
+};
+
+function MachinePorts({ machine }: { machine: PlacedMachine }) {
+  const pendingConnection = useEditorStore((s) => s.pendingConnection);
+  const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
+  const addConnection = useEditorStore((s) => s.addConnection);
+
+  const handlePortClick = (side: ConnectionSide, isOutput: boolean, e: Konva.KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true;
+
+    if (isOutput) {
+      // Start a pending connection from this output port
+      setPendingConnection({ fromMachineId: machine.id, fromSide: side });
+    } else {
+      // Input port — if there's a pending connection, complete it
+      if (pendingConnection) {
+        // Don't allow self-connections
+        if (pendingConnection.fromMachineId !== machine.id) {
+          addConnection(pendingConnection.fromMachineId, pendingConnection.fromSide, machine.id, side, 'belt');
+        }
+      }
+    }
+  };
+
+  return (
+    <>
+      {SIDES.map((side) => {
+        const offset = SIDE_OFFSETS[side];
+        // Output ports on top and right; input ports on bottom and left
+        const isOutput = side === 'top' || side === 'right';
+        const color = isOutput ? '#4ade80' : '#f87171';
+        const isActive = pendingConnection?.fromMachineId === machine.id && pendingConnection?.fromSide === side;
+
+        return (
+          <Circle
+            key={side}
+            x={offset.x}
+            y={offset.y}
+            radius={isActive ? PORT_RADIUS + 2 : PORT_RADIUS}
+            fill={color}
+            stroke={isActive ? '#fff' : '#333'}
+            strokeWidth={isActive ? 2 : 1}
+            onClick={(e) => handlePortClick(side, isOutput, e)}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'default';
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResult: ReturnType<typeof useFlowSolver> }) {
   const machineItem = useEditorStore((s) => s.getMachineItem(machine.machineId));
   const recipe = machine.recipeId ? useEditorStore((s) => s.getRecipe(machine.recipeId!)) : undefined;
   const selectedId = useEditorStore((s) => s.selectedId);
@@ -16,9 +85,13 @@ function MachineNode({ machine }: { machine: PlacedMachine }) {
   const isSelected = selectedId === machine.id;
   const machineName = machineItem?.name || machine.machineId;
   const displayName = recipe?.name || machineName;
-
-  // Display first 3 letters of machine name as a label since we can't easily render icons in Konva yet
   const label = displayName.length > 12 ? displayName.substring(0, 10) + '...' : displayName;
+
+  // Flow data for utilization bar
+  const machineFlow = flowResult?.machines[machine.id];
+  const util = machineFlow?.utilization ?? 0;
+  const utilPercent = Math.round(util * 100);
+  const utilColor = util < 0.5 ? '#f87171' : util < 0.9 ? '#facc15' : '#4ade80';
 
   return (
     <Group
@@ -60,33 +133,141 @@ function MachineNode({ machine }: { machine: PlacedMachine }) {
         wrap="none"
         ellipsis
       />
-      <Text
-        text={isSelected ? '🔄' : ''}
-        fontSize={14}
-        x={MACHINE_SIZE - 18}
-        y={-18}
+      {isSelected && (
+        <Text
+          text="R"
+          fontSize={12}
+          fontStyle="bold"
+          fill="#e94560"
+          x={MACHINE_SIZE - 14}
+          y={-16}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            rotateMachine(machine.id);
+          }}
+        />
+      )}
+      {/* Ports */}
+      <MachinePorts machine={machine} />
+
+      {/* Utilization bar (below machine) */}
+      {recipe && (
+        <>
+          <Rect
+            x={4}
+            y={MACHINE_SIZE + 12}
+            width={MACHINE_SIZE - 8}
+            height={4}
+            fill="#333"
+            cornerRadius={2}
+            listening={false}
+          />
+          <Rect
+            x={4}
+            y={MACHINE_SIZE + 12}
+            width={Math.max(0, (MACHINE_SIZE - 8) * util)}
+            height={4}
+            fill={utilColor}
+            cornerRadius={2}
+            listening={false}
+          />
+          <Text
+            text={`${utilPercent}%`}
+            fontSize={8}
+            fill={utilColor}
+            x={0}
+            y={MACHINE_SIZE + 17}
+            width={MACHINE_SIZE}
+            align="center"
+            listening={false}
+          />
+        </>
+      )}
+    </Group>
+  );
+}
+
+function BeltConnection({ connId, flowResult }: { connId: string; flowResult: ReturnType<typeof useFlowSolver> }) {
+  const conn = useEditorStore((s) => s.connections.find((c) => c.id === connId));
+  const fromMachine = useEditorStore((s) => conn ? s.machines.find((m) => m.id === conn.fromMachineId) : undefined);
+  const toMachine = useEditorStore((s) => conn ? s.machines.find((m) => m.id === conn.toMachineId) : undefined);
+  const selectedConnectionId = useEditorStore((s) => s.selectedConnectionId);
+  const selectConnection = useEditorStore((s) => s.selectConnection);
+  const removeConnection = useEditorStore((s) => s.removeConnection);
+
+  if (!conn || !fromMachine || !toMachine) return null;
+
+  const fromPos = getPortPosition(fromMachine.x, fromMachine.y, conn.fromSide);
+  const toPos = getPortPosition(toMachine.x, toMachine.y, conn.toSide);
+  const isSelected = selectedConnectionId === conn.id;
+
+  // Flow data
+  const flow = flowResult?.connections[conn.id];
+  const itemsPerSec = flow?.itemsPerSec ?? 0;
+  const bottlenecked = flow?.bottlenecked ?? false;
+  const capacity = flow?.beltCapacity ?? 15;
+  const saturation = capacity > 0 ? itemsPerSec / capacity : 0;
+
+  // Color based on saturation
+  const beltColor = bottlenecked ? '#f87171' : saturation > 0.5 ? '#facc15' : '#4ade80';
+  const strokeColor = isSelected ? '#e94560' : beltColor;
+
+  // Label position (midpoint)
+  const midX = (fromPos.x + toPos.x) / 2;
+  const midY = (fromPos.y + toPos.y) / 2;
+  const label = itemsPerSec > 0 ? `${itemsPerSec.toFixed(1)}/s` : '';
+
+  return (
+    <>
+      <Arrow
+        points={[fromPos.x, fromPos.y, toPos.x, toPos.y]}
+        stroke={strokeColor}
+        strokeWidth={isSelected ? 3 : 2}
+        pointerLength={8}
+        pointerWidth={8}
         onClick={(e) => {
           e.cancelBubble = true;
-          rotateMachine(machine.id);
+          selectConnection(conn.id);
+        }}
+        onDblClick={(e) => {
+          e.cancelBubble = true;
+          removeConnection(conn.id);
         }}
       />
-    </Group>
+      {label && (
+        <Group x={midX} y={midY - 10}>
+          <Rect x={-18} y={-7} width={36} height={14} fill="#1a1a2e" opacity={0.8} cornerRadius={3} />
+          <Text
+            text={label}
+            fontSize={10}
+            fill={beltColor}
+            width={36}
+            align="center"
+            y={-6}
+          />
+        </Group>
+      )}
+    </>
   );
 }
 
 export function FactoryCanvas() {
   const machines = useEditorStore((s) => s.machines);
+  const connections = useEditorStore((s) => s.connections);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
+  const pendingConnection = useEditorStore((s) => s.pendingConnection);
   const addMachine = useEditorStore((s) => s.addMachine);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
+  const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
+
+  const flowResult = useFlowSolver();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
-  // Track container size on mount and resize
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
@@ -99,23 +280,27 @@ export function FactoryCanvas() {
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // ESC cancels pending placement
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && pendingMachineId) {
-        setPendingMachine(null);
+      if (e.key === 'Escape') {
+        if (pendingMachineId) setPendingMachine(null);
+        if (pendingConnection) setPendingConnection(null);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [pendingMachineId, setPendingMachine]);
+  }, [pendingMachineId, pendingConnection, setPendingMachine, setPendingConnection]);
 
-  const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Click on empty canvas (the stage itself, not a child)
+  const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
     if (!stage) return;
 
+    // Click on empty canvas
     if (e.target === stage) {
+      if (pendingConnection) {
+        // Cancel pending connection on empty click
+        setPendingConnection(null);
+      }
       if (pendingMachineId) {
         const pointerPos = stage.getPointerPosition();
         if (pointerPos) {
@@ -127,7 +312,7 @@ export function FactoryCanvas() {
         selectMachine(null);
       }
     }
-  };
+  }, [pendingMachineId, pendingConnection, pos, scale, addMachine, selectMachine, setPendingConnection]);
 
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
@@ -142,7 +327,7 @@ export function FactoryCanvas() {
         height={size.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        draggable={!pendingMachineId}
+        draggable={!pendingMachineId && !pendingConnection}
         onDragEnd={(e) => {
           setPos({ x: e.target.x(), y: e.target.y() });
         }}
@@ -157,8 +342,15 @@ export function FactoryCanvas() {
             fill="#111122"
             listening={false}
           />
+
+          {/* Render connections first (behind machines) */}
+          {connections.map((c) => (
+            <BeltConnection key={c.id} connId={c.id} flowResult={flowResult} />
+          ))}
+
+          {/* Render machines on top */}
           {machines.map((m) => (
-            <MachineNode key={m.id} machine={m} />
+            <MachineNode key={m.id} machine={m} flowResult={flowResult} />
           ))}
         </Layer>
       </Stage>
@@ -167,6 +359,27 @@ export function FactoryCanvas() {
       {pendingMachineId && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-accent bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
           Click on canvas to place machine (ESC to cancel)
+        </div>
+      )}
+
+      {/* Hint when connecting */}
+      {pendingConnection && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-green bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
+          Click an input port (red) to connect (ESC to cancel)
+        </div>
+      )}
+
+      {/* Status bar */}
+      {flowResult && (machines.length > 0) && (
+        <div className="absolute bottom-4 left-4 rounded-lg border border-factorio-border bg-factorio-panel px-3 py-2 text-xs shadow-lg z-10">
+          <div className="flex gap-4">
+            <span className="text-factorio-text">⚙️ {(flowResult.totalPower / 1000).toFixed(2)} MW</span>
+            <span className="text-factorio-text">🔧 {machines.length} machines</span>
+            <span className="text-factorio-text">🔗 {connections.length} belts</span>
+            {flowResult.warnings.length > 0 && (
+              <span className="text-factorio-yellow">⚠️ {flowResult.warnings.length} warnings</span>
+            )}
+          </div>
         </div>
       )}
 

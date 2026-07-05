@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { FactorioData, Item, Recipe } from '../data/types';
 import { loadData, type DatasetVersion } from '../data/loader';
+import type { Connection, ConnectionType, ConnectionSide } from '../types/connections';
 
 export interface PlacedMachine {
   id: string;              // unique instance id
@@ -12,6 +13,12 @@ export interface PlacedMachine {
   modules?: string[];      // module ids in slots
 }
 
+// Pending connection state (user clicked an output port, waiting to click input port)
+export interface PendingConnection {
+  fromMachineId: string;
+  fromSide: ConnectionSide;
+}
+
 interface EditorState {
   // Data
   data: FactorioData | null;
@@ -21,8 +28,11 @@ interface EditorState {
 
   // Canvas entities
   machines: PlacedMachine[];
+  connections: Connection[];
   selectedId: string | null;
-  pendingMachineId: string | null;  // machine waiting to be placed
+  selectedConnectionId: string | null;
+  pendingMachineId: string | null;
+  pendingConnection: PendingConnection | null;
 
   // Actions
   loadData: (version?: DatasetVersion) => Promise<void>;
@@ -36,6 +46,11 @@ interface EditorState {
   setRecipe: (machineId: string, recipeId: string | undefined) => void;
   setModules: (machineId: string, modules: string[]) => void;
 
+  addConnection: (fromMachineId: string, fromSide: ConnectionSide, toMachineId: string, toSide: ConnectionSide, type: ConnectionType) => void;
+  removeConnection: (id: string) => void;
+  selectConnection: (id: string | null) => void;
+  setPendingConnection: (conn: PendingConnection | null) => void;
+
   setPendingMachine: (machineId: string | null) => void;
   clearCanvas: () => void;
 
@@ -44,9 +59,11 @@ interface EditorState {
   getMachineItem: (machineId: string) => Item | undefined;
   getRecipe: (recipeId: string) => Recipe | undefined;
   getRecipesForMachine: (machineId: string) => Recipe[];
+  getConnectionsForMachine: (machineId: string) => Connection[];
 }
 
 let machineCounter = 0;
+let connectionCounter = 0;
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   data: null,
@@ -55,8 +72,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   dataError: null,
 
   machines: [],
+  connections: [],
   selectedId: null,
+  selectedConnectionId: null,
   pendingMachineId: null,
+  pendingConnection: null,
 
   loadData: async (version) => {
     const v = version ?? get().dataVersion;
@@ -93,6 +113,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   removeMachine: (id) => {
     set((state) => ({
       machines: state.machines.filter((m) => m.id !== id),
+      connections: state.connections.filter((c) => c.fromMachineId !== id && c.toMachineId !== id),
       selectedId: state.selectedId === id ? null : state.selectedId,
     }));
   },
@@ -133,7 +154,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPendingMachine: (machineId) => set({ pendingMachineId: machineId }),
 
-  clearCanvas: () => set({ machines: [], selectedId: null }),
+  addConnection: (fromMachineId, fromSide, toMachineId, toSide, type) => {
+    const id = `conn-${++connectionCounter}`;
+    const conn: Connection = {
+      id, type, fromMachineId, fromSide, toMachineId, toSide,
+      beltId: type === 'belt' ? get().data?.defaults.belt : undefined,
+    };
+    set((state) => ({
+      connections: [...state.connections, conn],
+      pendingConnection: null,
+      selectedConnectionId: id,
+    }));
+  },
+
+  removeConnection: (id) => {
+    set((state) => ({
+      connections: state.connections.filter((c) => c.id !== id),
+      selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId,
+    }));
+  },
+
+  selectConnection: (id) => set({ selectedConnectionId: id, selectedId: null }),
+
+  setPendingConnection: (conn) => set({ pendingConnection: conn }),
+
+  clearCanvas: () => set({ machines: [], connections: [], selectedId: null, selectedConnectionId: null, pendingConnection: null }),
 
   getMachine: (id) => get().machines.find((m) => m.id === id),
 
@@ -153,6 +198,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const data = get().data;
     if (!data) return [];
     return data.recipes.filter((r) => r.producers?.includes(machineId));
+  },
+
+  getConnectionsForMachine: (machineId) => {
+    return get().connections.filter((c) => c.fromMachineId === machineId || c.toMachineId === machineId);
   },
 }));
 
