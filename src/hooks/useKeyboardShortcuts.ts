@@ -15,6 +15,7 @@ export function useKeyboardShortcuts() {
   const removeMachine = useEditorStore((s) => s.removeMachine);
   const removeConnection = useEditorStore((s) => s.removeConnection);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
+  const addMachine = useEditorStore((s) => s.addMachine);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
   const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
@@ -62,6 +63,28 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Ctrl+D — duplicate selected machine
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        const state = useEditorStore.getState();
+        if (state.selectedId) {
+          const m = state.machines.find((m) => m.id === state.selectedId);
+          if (m) {
+            addMachine(m.machineId, m.x + 70, m.y);
+            // Set the same recipe on the new machine
+            const state2 = useEditorStore.getState();
+            const newMachine = state2.machines[state2.machines.length - 1];
+            if (newMachine && m.recipeId) {
+              state2.setRecipe(newMachine.id, m.recipeId);
+            }
+            if (newMachine && m.modules) {
+              state2.setModules(newMachine.id, [...m.modules]);
+            }
+          }
+        }
+        return;
+      }
+
       // R — rotate selected machine
       if (e.key === 'r' || e.key === 'R') {
         if (selectedId) {
@@ -76,7 +99,7 @@ export function useKeyboardShortcuts() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [
     selectedId, selectedConnectionId,
-    removeMachine, removeConnection, rotateMachine,
+    removeMachine, removeConnection, rotateMachine, addMachine,
     setPendingMachine, setPendingConnection, setPendingSplitter,
     pendingMachineId, pendingConnection, pendingSplitterType,
   ]);

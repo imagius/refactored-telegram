@@ -14,6 +14,7 @@ export function Inspector() {
   const removeMachine = useEditorStore((s) => s.removeMachine);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
   const setModules = useEditorStore((s) => s.setModules);
+  const addMachine = useEditorStore((s) => s.addMachine);
   const [recipeSearch, setRecipeSearch] = useState('');
 
   const machineItem = machine ? getMachineItem(machine.machineId) : undefined;
@@ -226,10 +227,23 @@ export function Inspector() {
           🔄 Rotate
         </button>
         <button
+          onClick={() => {
+            addMachine(machine.machineId, machine.x + 70, machine.y);
+            const state = useEditorStore.getState();
+            const newM = state.machines[state.machines.length - 1];
+            if (newM && machine.recipeId) state.setRecipe(newM.id, machine.recipeId);
+            if (newM && machine.modules) state.setModules(newM.id, [...machine.modules]);
+          }}
+          className="flex-1 rounded border border-factorio-border bg-factorio-bg px-2 py-1.5 text-xs text-factorio-text hover:bg-factorio-border transition-colors"
+          title="Duplicate (Ctrl+D)"
+        >
+          📋 Duplicate
+        </button>
+        <button
           onClick={() => removeMachine(machine.id)}
           className="flex-1 rounded border border-factorio-red/50 bg-factorio-red/10 px-2 py-1.5 text-xs text-factorio-red hover:bg-factorio-red/20 transition-colors"
         >
-          🗑️ Delete
+          🗑 Delete
         </button>
       </div>
     </div>
