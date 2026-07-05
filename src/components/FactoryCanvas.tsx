@@ -509,6 +509,7 @@ export function FactoryCanvas() {
   const addSplitter = useEditorStore((s) => s.addSplitter);
   const addBeacon = useEditorStore((s) => s.addBeacon);
   const selectMachine = useEditorStore((s) => s.selectMachine);
+  const selectMultiple = useEditorStore((s) => s.selectMultiple);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
   const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
@@ -519,6 +520,7 @@ export function FactoryCanvas() {
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [boxSelect, setBoxSelect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
   useEffect(() => {
     const updateSize = () => {
@@ -637,9 +639,53 @@ export function FactoryCanvas() {
         height={size.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        draggable={!pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType}
+        draggable={!pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType && !boxSelect}
         onDragEnd={(e) => {
           setPos({ x: e.target.x(), y: e.target.y() });
+        }}
+        onMouseDown={(e) => {
+          // Start box selection on empty canvas when no pending action
+          const stage = e.target.getStage();
+          if (!stage) return;
+          if (e.target === stage && !pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType) {
+            const pointerPos = stage.getPointerPosition();
+            if (pointerPos) {
+              const worldX = (pointerPos.x - pos.x) / scale;
+              const worldY = (pointerPos.y - pos.y) / scale;
+              setBoxSelect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+            }
+          }
+        }}
+        onMouseMove={(e) => {
+          if (!boxSelect) return;
+          const stage = e.target.getStage();
+          if (!stage) return;
+          const pointerPos = stage.getPointerPosition();
+          if (pointerPos) {
+            const worldX = (pointerPos.x - pos.x) / scale;
+            const worldY = (pointerPos.y - pos.y) / scale;
+            setBoxSelect({ ...boxSelect, x2: worldX, y2: worldY });
+          }
+        }}
+        onMouseUp={() => {
+          if (boxSelect) {
+            // Select all machines within the box
+            const minX = Math.min(boxSelect.x1, boxSelect.x2);
+            const maxX = Math.max(boxSelect.x1, boxSelect.x2);
+            const minY = Math.min(boxSelect.y1, boxSelect.y2);
+            const maxY = Math.max(boxSelect.y1, boxSelect.y2);
+
+            const selected = machines
+              .filter((m) => m.x + MACHINE_SIZE >= minX && m.x <= maxX && m.y + MACHINE_SIZE >= minY && m.y <= maxY)
+              .map((m) => m.id);
+
+            if (selected.length > 0) {
+              selectMultiple(selected);
+            } else {
+              selectMachine(null);
+            }
+            setBoxSelect(null);
+          }
         }}
       >
         <Layer x={pos.x} y={pos.y} scaleX={scale} scaleY={scale}>
@@ -662,6 +708,21 @@ export function FactoryCanvas() {
       {beacons.map((b) => (
         <BeaconNode key={b.id} beacon={b} />
       ))}
+
+      {/* Box selection rectangle */}
+      {boxSelect && (
+        <Rect
+          x={Math.min(boxSelect.x1, boxSelect.x2)}
+          y={Math.min(boxSelect.y1, boxSelect.y2)}
+          width={Math.abs(boxSelect.x2 - boxSelect.x1)}
+          height={Math.abs(boxSelect.y2 - boxSelect.y1)}
+          fill="rgba(100, 150, 255, 0.15)"
+          stroke="#6496ff"
+          strokeWidth={1}
+          dash={[4, 3]}
+          listening={false}
+        />
+      )}
 
       {/* Render groups (behind everything) */}
       {groups.map((g) => (

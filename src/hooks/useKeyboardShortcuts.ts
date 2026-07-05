@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, type PlacedMachine } from '../store/editorStore';
 
 /**
  * Global keyboard shortcuts for the editor.
@@ -9,6 +9,9 @@ import { useEditorStore } from '../store/editorStore';
  * - Ctrl+S: Save (export)
  * - Ctrl+E: Export
  */
+// Clipboard for copy/paste
+let clipboard: PlacedMachine[] = [];
+
 export function useKeyboardShortcuts() {
   const selectedId = useEditorStore((s) => s.selectedId);
   const selectedConnectionId = useEditorStore((s) => s.selectedConnectionId);
@@ -16,6 +19,7 @@ export function useKeyboardShortcuts() {
   const removeConnection = useEditorStore((s) => s.removeConnection);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
   const addMachine = useEditorStore((s) => s.addMachine);
+  const removeSelected = useEditorStore((s) => s.removeSelected);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
   const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
@@ -56,9 +60,9 @@ export function useKeyboardShortcuts() {
       // Delete/Backspace — remove selected
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const state = useEditorStore.getState();
-        if (state.selectedIds.length > 1) {
+        if (state.selectedIds.length > 0) {
           e.preventDefault();
-          state.removeSelected();
+          removeSelected();
         } else if (selectedId) {
           e.preventDefault();
           removeMachine(selectedId);
@@ -91,6 +95,40 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Ctrl+C — copy selected machines
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        const state = useEditorStore.getState();
+        const ids = state.selectedIds.length > 0 ? state.selectedIds : (state.selectedId ? [state.selectedId] : []);
+        clipboard = state.machines
+          .filter((m) => ids.includes(m.id))
+          .map((m) => ({ ...m }));  // deep copy
+        return;
+      }
+
+      // Ctrl+V — paste copied machines
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        if (clipboard.length === 0) return;
+        const state = useEditorStore.getState();
+        // Paste with a 20px offset
+        for (const m of clipboard) {
+          state.addMachine(m.machineId, m.x + 20, m.y + 20);
+          const newM = state.machines[state.machines.length - 1];
+          if (newM && m.recipeId) state.setRecipe(newM.id, m.recipeId);
+          if (newM && m.modules) state.setModules(newM.id, [...m.modules]);
+        }
+        return;
+      }
+
+      // Ctrl+A — select all machines
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        const state = useEditorStore.getState();
+        state.selectMultiple(state.machines.map((m) => m.id));
+        return;
+      }
+
       // R — rotate selected machine
       if (e.key === 'r' || e.key === 'R') {
         if (selectedId) {
@@ -105,7 +143,7 @@ export function useKeyboardShortcuts() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [
     selectedId, selectedConnectionId,
-    removeMachine, removeConnection, rotateMachine, addMachine,
+    removeMachine, removeConnection, removeSelected, rotateMachine, addMachine,
     setPendingMachine, setPendingConnection, setPendingSplitter,
     pendingMachineId, pendingConnection, pendingSplitterType,
   ]);
