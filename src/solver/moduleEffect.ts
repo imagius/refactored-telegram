@@ -1,7 +1,7 @@
 // Module and beacon effect calculator
 // Computes how modules and beacons modify machine speed, productivity, and power.
 
-import type { Item, ModuleProps, BeaconProps } from '../data/types';
+import type { Item, BeaconProps } from '../data/types';
 
 export interface ModuleEffects {
   speedBonus: number;        // additive, e.g., 0.5 = +50% speed

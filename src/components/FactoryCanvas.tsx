@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Stage, Layer, Rect, Text, Group, Circle, Arrow, Line } from 'react-konva';
+import { Stage, Layer, Rect, Text, Group, Circle, Arrow } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore, type PlacedMachine, type PlacedSplitter } from '../store/editorStore';
 import { getPortPosition, type ConnectionSide } from '../types/connections';
@@ -254,7 +254,7 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
 const SPLITTER_WIDTH = 60;
 const SPLITTER_HEIGHT = 30;
 
-function SplitterNode({ splitter, flowResult }: { splitter: PlacedSplitter; flowResult: ReturnType<typeof useFlowSolver> }) {
+function SplitterNode({ splitter }: { splitter: PlacedSplitter; flowResult: ReturnType<typeof useFlowSolver> }) {
   const selectedId = useEditorStore((s) => s.selectedId);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const moveSplitter = useEditorStore((s) => s.moveSplitter);

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { FactorioData, Item, Recipe } from '../data/types';
 import { loadData, type DatasetVersion } from '../data/loader';
 import type { Connection, ConnectionType, ConnectionSide } from '../types/connections';
-import { autoSave, loadAutoSave, type FactoryState } from './persistence';
+import type { FactoryState } from './persistence';
 
 export interface PlacedMachine {
   id: string;              // unique instance id

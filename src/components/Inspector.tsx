@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useEditorStore } from '../store/editorStore';
-import { isMachine, isBelt, isBeacon, isModule } from '../data/types';
+import { isMachine } from '../data/types';
 import { IconSprite } from './IconSprite';
 import type { Recipe } from '../data/types';
 
 export function Inspector() {
-  const selectedId = useEditorStore((s) => s.selectedId);
   const machine = useEditorStore((s) => s.machines.find((m) => m.id === s.selectedId));
   const getMachineItem = useEditorStore((s) => s.getMachineItem);
   const getRecipe = useEditorStore((s) => s.getRecipe);

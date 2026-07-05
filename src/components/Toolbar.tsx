@@ -11,7 +11,6 @@ export function Toolbar() {
   const setDataVersion = useEditorStore((s) => s.setDataVersion);
   const loadFactoryState = useEditorStore((s) => s.loadFactoryState);
   const clearCanvas = useEditorStore((s) => s.clearCanvas);
-  const flowResult = useEditorStore((s) => s.data);  // just to trigger re-render
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showSlots, setShowSlots] = useState(false);
