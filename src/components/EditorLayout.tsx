@@ -6,6 +6,7 @@ import { Inspector } from './Inspector';
 import { Toolbar } from './Toolbar';
 import { autoSave, loadAutoSave } from '../store/persistence';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useUndoRedo } from '../hooks/useUndoRedo';
 
 export function EditorLayout() {
   const loadData = useEditorStore((s) => s.loadData);
@@ -22,6 +23,9 @@ export function EditorLayout() {
 
   // Keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Undo/redo
+  const { undo, redo, canUndo, canRedo } = useUndoRedo();
 
   // Load data on startup
   useEffect(() => {
@@ -79,7 +83,7 @@ export function EditorLayout() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-factorio-bg">
       {/* Top toolbar */}
-      <Toolbar />
+      <Toolbar undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} />
 
       {/* Main editor area */}
       <div className="flex flex-1 overflow-hidden">

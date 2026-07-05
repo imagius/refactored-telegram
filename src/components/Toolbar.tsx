@@ -3,7 +3,14 @@ import { useEditorStore } from '../store/editorStore';
 import { exportFactory, importFactory, saveToSlot, loadFromSlot, getSlots, deleteSlot } from '../store/persistence';
 import type { DatasetVersion } from '../data/loader';
 
-export function Toolbar() {
+interface ToolbarProps {
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
   const splitters = useEditorStore((s) => s.splitters);
@@ -76,6 +83,26 @@ export function Toolbar() {
         <option value="2.0">Factorio 2.0</option>
         <option value="space-age">Space Age</option>
       </select>
+
+      <div className="mx-2 h-5 w-px bg-factorio-border" />
+
+      {/* Undo/Redo */}
+      <button
+        onClick={undo}
+        disabled={!canUndo}
+        className="rounded border border-factorio-border bg-factorio-bg px-2 py-0.5 text-xs text-factorio-text hover:bg-factorio-border disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Undo (Ctrl+Z)"
+      >
+        ↶ Undo
+      </button>
+      <button
+        onClick={redo}
+        disabled={!canRedo}
+        className="rounded border border-factorio-border bg-factorio-bg px-2 py-0.5 text-xs text-factorio-text hover:bg-factorio-border disabled:opacity-30 disabled:cursor-not-allowed"
+        title="Redo (Ctrl+Shift+Z)"
+      >
+        ↷ Redo
+      </button>
 
       <div className="mx-2 h-5 w-px bg-factorio-border" />
 
