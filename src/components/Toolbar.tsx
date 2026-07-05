@@ -18,6 +18,8 @@ export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
   const setDataVersion = useEditorStore((s) => s.setDataVersion);
   const loadFactoryState = useEditorStore((s) => s.loadFactoryState);
   const clearCanvas = useEditorStore((s) => s.clearCanvas);
+  const gridSnap = useEditorStore((s) => s.gridSnap);
+  const toggleGridSnap = useEditorStore((s) => s.toggleGridSnap);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showSlots, setShowSlots] = useState(false);
@@ -160,6 +162,19 @@ export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
       <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} className="hidden" />
 
       <div className="mx-2 h-5 w-px bg-factorio-border" />
+
+      {/* Grid snap toggle */}
+      <button
+        onClick={toggleGridSnap}
+        className={`rounded border px-2 py-0.5 text-xs ${
+          gridSnap
+            ? 'border-factorio-green/50 bg-factorio-green/10 text-factorio-green'
+            : 'border-factorio-border bg-factorio-bg text-factorio-text hover:bg-factorio-border'
+        }`}
+        title="Toggle grid snapping"
+      >
+        📐 Grid
+      </button>
 
       {/* Clear */}
       <button onClick={handleClear} className="rounded border border-factorio-red/50 bg-factorio-red/10 px-2 py-0.5 text-xs text-factorio-red hover:bg-factorio-red/20">

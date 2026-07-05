@@ -108,7 +108,15 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
         selectMachine(machine.id);
       }}
       onDragEnd={(e) => {
-        moveMachine(machine.id, e.target.x(), e.target.y());
+        let x = e.target.x();
+        let y = e.target.y();
+        const gridSnap = useEditorStore.getState().gridSnap;
+        const gridSize = useEditorStore.getState().gridSize;
+        if (gridSnap) {
+          x = Math.round(x / gridSize) * gridSize;
+          y = Math.round(y / gridSize) * gridSize;
+        }
+        moveMachine(machine.id, x, y);
       }}
     >
       <Rect
@@ -274,7 +282,15 @@ function SplitterNode({ splitter }: { splitter: PlacedSplitter; flowResult: Retu
         selectMachine(splitter.id);
       }}
       onDragEnd={(e) => {
-        moveSplitter(splitter.id, e.target.x(), e.target.y());
+        let x = e.target.x();
+        let y = e.target.y();
+        const gridSnap = useEditorStore.getState().gridSnap;
+        const gridSize = useEditorStore.getState().gridSize;
+        if (gridSnap) {
+          x = Math.round(x / gridSize) * gridSize;
+          y = Math.round(y / gridSize) * gridSize;
+        }
+        moveSplitter(splitter.id, x, y);
       }}
     >
       <Rect

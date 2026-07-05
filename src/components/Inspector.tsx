@@ -19,6 +19,7 @@ export function Inspector() {
   const machineItem = machine ? getMachineItem(machine.machineId) : undefined;
   const recipe = machine?.recipeId ? getRecipe(machine.recipeId) : undefined;
   const recipesForMachine = machine ? getRecipesForMachine(machine.machineId) : [];
+  const selectedConnection = useEditorStore((s) => s.connections.find((c) => c.id === s.selectedConnectionId));
 
   const getIcon = (id: string) => data?.icons.find((i) => i.id === id);
 
@@ -29,10 +30,14 @@ export function Inspector() {
   }, [recipesForMachine, recipeSearch]);
 
   if (!machine || !machineItem) {
+    // Show connection inspector if a connection is selected
+    if (selectedConnection) {
+      return <ConnectionInspector connId={selectedConnection.id} />;
+    }
     return (
       <div className="p-3">
         <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Inspector</h2>
-        <p className="text-sm text-gray-500">Select a machine to view its properties</p>
+        <p className="text-sm text-gray-500">Select a machine or belt to view its properties</p>
       </div>
     );
   }
@@ -227,6 +232,89 @@ export function Inspector() {
           🗑️ Delete
         </button>
       </div>
+    </div>
+  );
+}
+
+function ConnectionInspector({ connId }: { connId: string }) {
+  const conn = useEditorStore((s) => s.connections.find((c) => c.id === connId));
+  const data = useEditorStore((s) => s.data);
+  const removeConnection = useEditorStore((s) => s.removeConnection);
+  const fromMachine = useEditorStore((s) => conn ? s.machines.find((m) => m.id === conn.fromMachineId) : undefined);
+  const toMachine = useEditorStore((s) => conn ? s.machines.find((m) => m.id === conn.toMachineId) : undefined);
+  const fromItem = fromMachine ? useEditorStore.getState().getMachineItem(fromMachine.machineId) : undefined;
+  const toItem = toMachine ? useEditorStore.getState().getMachineItem(toMachine.machineId) : undefined;
+
+  if (!conn) {
+    return (
+      <div className="p-3">
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Inspector</h2>
+        <p className="text-sm text-gray-500">Select a machine or belt to view its properties</p>
+      </div>
+    );
+  }
+
+  const belts = data?.items.filter((i) => i.belt !== undefined) ?? [];
+
+  return (
+    <div className="p-3">
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Belt Connection</h2>
+
+      <div className="mb-3 space-y-1 text-xs">
+        <div className="flex justify-between">
+          <span className="text-gray-400">From:</span>
+          <span className="text-factorio-text-bright">{fromItem?.name ?? conn.fromMachineId}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">To:</span>
+          <span className="text-factorio-text-bright">{toItem?.name ?? conn.toMachineId}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Type:</span>
+          <span className="text-factorio-text-bright capitalize">{conn.type}</span>
+        </div>
+      </div>
+
+      {/* Belt tier selector */}
+      <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Belt Tier</h3>
+      <select
+        value={conn.beltId ?? ''}
+        onChange={(e) => {
+          // Update the connection's belt tier
+          useEditorStore.setState((state) => ({
+            connections: state.connections.map((c) =>
+              c.id === connId ? { ...c, beltId: e.target.value || undefined } : c
+            ),
+          }));
+        }}
+        className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
+      >
+        {belts.map((belt) => (
+          <option key={belt.id} value={belt.id}>
+            {belt.name} ({belt.belt?.speed} items/s)
+          </option>
+        ))}
+      </select>
+
+      {/* Belt speed info */}
+      {conn.beltId && (() => {
+        const belt = data?.items.find((i) => i.id === conn.beltId);
+        return belt?.belt ? (
+          <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Max throughput:</span>
+              <span className="text-factorio-green">{belt.belt.speed} items/sec</span>
+            </div>
+          </div>
+        ) : null;
+      })()}
+
+      <button
+        onClick={() => removeConnection(connId)}
+        className="mt-3 w-full rounded border border-factorio-red/50 bg-factorio-red/10 px-2 py-1.5 text-xs text-factorio-red hover:bg-factorio-red/20 transition-colors"
+      >
+        🗑 Delete Connection
+      </button>
     </div>
   );
 }

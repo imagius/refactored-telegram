@@ -48,6 +48,8 @@ interface EditorState {
   pendingMachineId: string | null;
   pendingConnection: PendingConnection | null;
   pendingSplitterType: 'splitter' | 'merger' | null;
+  gridSnap: boolean;
+  gridSize: number;
 
   // Actions
   loadData: (version?: DatasetVersion) => Promise<void>;
@@ -72,6 +74,8 @@ interface EditorState {
   setSplitterPriority: (id: string, output: number) => void;
   setSplitterFilter: (id: string, itemId: string | undefined) => void;
   setPendingSplitter: (type: 'splitter' | 'merger' | null) => void;
+
+  toggleGridSnap: () => void;
 
   setPendingMachine: (machineId: string | null) => void;
   clearCanvas: () => void;
@@ -103,6 +107,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   pendingMachineId: null,
   pendingConnection: null,
   pendingSplitterType: null,
+  gridSnap: false,
+  gridSize: 10,
 
   loadData: async (version) => {
     const v = version ?? get().dataVersion;
@@ -245,6 +251,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setPendingSplitter: (type) => set({ pendingSplitterType: type }),
+
+  toggleGridSnap: () => set((state) => ({ gridSnap: !state.gridSnap })),
 
   clearCanvas: () => set({ machines: [], connections: [], splitters: [], selectedId: null, selectedConnectionId: null, pendingConnection: null, pendingSplitterType: null }),
 
