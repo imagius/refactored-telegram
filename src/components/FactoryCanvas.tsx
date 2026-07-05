@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Group, Circle, Arrow, Line } from 'react-konva';
 import type Konva from 'konva';
-import { useEditorStore, type PlacedMachine } from '../store/editorStore';
+import { useEditorStore, type PlacedMachine, type PlacedSplitter } from '../store/editorStore';
 import { getPortPosition, type ConnectionSide } from '../types/connections';
 import { useFlowSolver } from '../hooks/useFlowSolver';
 
@@ -251,15 +251,100 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
   );
 }
 
+const SPLITTER_WIDTH = 60;
+const SPLITTER_HEIGHT = 30;
+
+function SplitterNode({ splitter, flowResult }: { splitter: PlacedSplitter; flowResult: ReturnType<typeof useFlowSolver> }) {
+  const selectedId = useEditorStore((s) => s.selectedId);
+  const selectMachine = useEditorStore((s) => s.selectMachine);
+  const moveSplitter = useEditorStore((s) => s.moveSplitter);
+  const removeSplitter = useEditorStore((s) => s.removeSplitter);
+
+  const isSelected = selectedId === splitter.id;
+  const label = splitter.type === 'splitter' ? 'Split' : 'Merge';
+  const fillColor = splitter.type === 'splitter' ? '#2a3a1e' : '#1e2a3a';
+
+  return (
+    <Group
+      x={splitter.x}
+      y={splitter.y}
+      draggable
+      onClick={(e) => {
+        e.cancelBubble = true;
+        selectMachine(splitter.id);
+      }}
+      onDragEnd={(e) => {
+        moveSplitter(splitter.id, e.target.x(), e.target.y());
+      }}
+    >
+      <Rect
+        width={SPLITTER_WIDTH}
+        height={SPLITTER_HEIGHT}
+        cornerRadius={4}
+        fill={isSelected ? '#3a5a2e' : fillColor}
+        stroke={isSelected ? '#e94560' : '#4a4a6a'}
+        strokeWidth={isSelected ? 2 : 1}
+      />
+      <Text
+        text={label}
+        fontSize={10}
+        fill="#c4c4c4"
+        width={SPLITTER_WIDTH}
+        align="center"
+        y={SPLITTER_HEIGHT / 2 - 5}
+      />
+      {/* Input port (left) */}
+      <Circle
+        x={0}
+        y={SPLITTER_HEIGHT / 2}
+        radius={5}
+        fill="#f87171"
+        stroke="#333"
+        strokeWidth={1}
+      />
+      {/* Output ports (right top and right bottom for splitter, single for merger) */}
+      {splitter.type === 'splitter' ? (
+        <>
+          <Circle x={SPLITTER_WIDTH} y={8} radius={5} fill="#4ade80" stroke="#333" strokeWidth={1} />
+          <Circle x={SPLITTER_WIDTH} y={SPLITTER_HEIGHT - 8} radius={5} fill="#4ade80" stroke="#333" strokeWidth={1} />
+        </>
+      ) : (
+        <>
+          {/* Merger: two inputs on left, one output on right */}
+          <Circle x={0} y={8} radius={5} fill="#f87171" stroke="#333" strokeWidth={1} />
+          <Circle x={SPLITTER_WIDTH} y={SPLITTER_HEIGHT / 2} radius={5} fill="#4ade80" stroke="#333" strokeWidth={1} />
+        </>
+      )}
+      {isSelected && (
+        <Text
+          text="✕"
+          fontSize={12}
+          fill="#f87171"
+          x={SPLITTER_WIDTH - 4}
+          y={-16}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            removeSplitter(splitter.id);
+          }}
+        />
+      )}
+    </Group>
+  );
+}
+
 export function FactoryCanvas() {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
+  const splitters = useEditorStore((s) => s.splitters);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
   const pendingConnection = useEditorStore((s) => s.pendingConnection);
+  const pendingSplitterType = useEditorStore((s) => s.pendingSplitterType);
   const addMachine = useEditorStore((s) => s.addMachine);
+  const addSplitter = useEditorStore((s) => s.addSplitter);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
+  const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
 
   const flowResult = useFlowSolver();
 
@@ -285,11 +370,12 @@ export function FactoryCanvas() {
       if (e.key === 'Escape') {
         if (pendingMachineId) setPendingMachine(null);
         if (pendingConnection) setPendingConnection(null);
+        if (pendingSplitterType) setPendingSplitter(null);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [pendingMachineId, pendingConnection, setPendingMachine, setPendingConnection]);
+  }, [pendingMachineId, pendingConnection, pendingSplitterType, setPendingMachine, setPendingConnection, setPendingSplitter]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
@@ -298,7 +384,6 @@ export function FactoryCanvas() {
     // Click on empty canvas
     if (e.target === stage) {
       if (pendingConnection) {
-        // Cancel pending connection on empty click
         setPendingConnection(null);
       }
       if (pendingMachineId) {
@@ -308,11 +393,18 @@ export function FactoryCanvas() {
           const worldY = (pointerPos.y - pos.y) / scale;
           addMachine(pendingMachineId, worldX - MACHINE_SIZE / 2, worldY - MACHINE_SIZE / 2);
         }
+      } else if (pendingSplitterType) {
+        const pointerPos = stage.getPointerPosition();
+        if (pointerPos) {
+          const worldX = (pointerPos.x - pos.x) / scale;
+          const worldY = (pointerPos.y - pos.y) / scale;
+          addSplitter(pendingSplitterType, worldX - 30, worldY - 15);
+        }
       } else {
         selectMachine(null);
       }
     }
-  }, [pendingMachineId, pendingConnection, pos, scale, addMachine, selectMachine, setPendingConnection]);
+  }, [pendingMachineId, pendingConnection, pendingSplitterType, pos, scale, addMachine, addSplitter, selectMachine, setPendingConnection, setPendingSplitter]);
 
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
@@ -327,7 +419,7 @@ export function FactoryCanvas() {
         height={size.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        draggable={!pendingMachineId && !pendingConnection}
+        draggable={!pendingMachineId && !pendingConnection && !pendingSplitterType}
         onDragEnd={(e) => {
           setPos({ x: e.target.x(), y: e.target.y() });
         }}
@@ -343,10 +435,15 @@ export function FactoryCanvas() {
             listening={false}
           />
 
-          {/* Render connections first (behind machines) */}
-          {connections.map((c) => (
-            <BeltConnection key={c.id} connId={c.id} flowResult={flowResult} />
-          ))}
+      {/* Splitter nodes */}
+      {splitters.map((s) => (
+        <SplitterNode key={s.id} splitter={s} flowResult={flowResult} />
+      ))}
+
+      {/* Render connections first (behind machines) */}
+      {connections.map((c) => (
+        <BeltConnection key={c.id} connId={c.id} flowResult={flowResult} />
+      ))}
 
           {/* Render machines on top */}
           {machines.map((m) => (
@@ -366,6 +463,13 @@ export function FactoryCanvas() {
       {pendingConnection && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-green bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
           Click an input port (red) to connect (ESC to cancel)
+        </div>
+      )}
+
+      {/* Hint when placing splitter */}
+      {pendingSplitterType && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-accent bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
+          Click on canvas to place {pendingSplitterType} (ESC to cancel)
         </div>
       )}
 

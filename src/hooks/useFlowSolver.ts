@@ -6,6 +6,7 @@ import { solveFlow, type FlowResult } from '../solver/flowSolver';
 export function useFlowSolver(): FlowResult | null {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
+  const splitters = useEditorStore((s) => s.splitters);
   const data = useEditorStore((s) => s.data);
   const [result, setResult] = useFlowResult();
 
@@ -17,14 +18,14 @@ export function useFlowSolver(): FlowResult | null {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     timeoutRef.current = setTimeout(() => {
-      const flowResult = solveFlow(machines, connections, data);
+      const flowResult = solveFlow(machines, connections, data, splitters);
       setResult(flowResult);
     }, 200);
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [machines, connections, data, setResult]);
+  }, [machines, connections, splitters, data, setResult]);
 
   return result;
 }

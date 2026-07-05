@@ -19,6 +19,18 @@ export interface PendingConnection {
   fromSide: ConnectionSide;
 }
 
+// Splitter/merger node
+export interface PlacedSplitter {
+  id: string;
+  type: 'splitter' | 'merger';
+  x: number;
+  y: number;
+  rotation: number;
+  beltId?: string;
+  priorityOutput?: number;  // 0 or 1 (for splitters)
+  filterItem?: string;       // item id for filter splitters
+}
+
 interface EditorState {
   // Data
   data: FactorioData | null;
@@ -29,10 +41,12 @@ interface EditorState {
   // Canvas entities
   machines: PlacedMachine[];
   connections: Connection[];
+  splitters: PlacedSplitter[];
   selectedId: string | null;
   selectedConnectionId: string | null;
   pendingMachineId: string | null;
   pendingConnection: PendingConnection | null;
+  pendingSplitterType: 'splitter' | 'merger' | null;
 
   // Actions
   loadData: (version?: DatasetVersion) => Promise<void>;
@@ -51,6 +65,13 @@ interface EditorState {
   selectConnection: (id: string | null) => void;
   setPendingConnection: (conn: PendingConnection | null) => void;
 
+  addSplitter: (type: 'splitter' | 'merger', x: number, y: number) => void;
+  removeSplitter: (id: string) => void;
+  moveSplitter: (id: string, x: number, y: number) => void;
+  setSplitterPriority: (id: string, output: number) => void;
+  setSplitterFilter: (id: string, itemId: string | undefined) => void;
+  setPendingSplitter: (type: 'splitter' | 'merger' | null) => void;
+
   setPendingMachine: (machineId: string | null) => void;
   clearCanvas: () => void;
 
@@ -64,6 +85,7 @@ interface EditorState {
 
 let machineCounter = 0;
 let connectionCounter = 0;
+let splitterCounter = 0;
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   data: null,
@@ -73,10 +95,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   machines: [],
   connections: [],
+  splitters: [],
   selectedId: null,
   selectedConnectionId: null,
   pendingMachineId: null,
   pendingConnection: null,
+  pendingSplitterType: null,
 
   loadData: async (version) => {
     const v = version ?? get().dataVersion;
@@ -178,7 +202,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPendingConnection: (conn) => set({ pendingConnection: conn }),
 
-  clearCanvas: () => set({ machines: [], connections: [], selectedId: null, selectedConnectionId: null, pendingConnection: null }),
+  addSplitter: (type, x, y) => {
+    const id = `splitter-${++splitterCounter}`;
+    const splitter: PlacedSplitter = {
+      id, type, x, y, rotation: 0,
+      beltId: get().data?.defaults.belt,
+      priorityOutput: undefined,
+    };
+    set((state) => ({
+      splitters: [...state.splitters, splitter],
+      selectedId: id,
+      pendingSplitterType: null,
+    }));
+  },
+
+  removeSplitter: (id) => {
+    set((state) => ({
+      splitters: state.splitters.filter((s) => s.id !== id),
+      connections: state.connections.filter((c) => c.fromMachineId !== id && c.toMachineId !== id),
+      selectedId: state.selectedId === id ? null : state.selectedId,
+    }));
+  },
+
+  moveSplitter: (id, x, y) => {
+    set((state) => ({
+      splitters: state.splitters.map((s) => s.id === id ? { ...s, x, y } : s),
+    }));
+  },
+
+  setSplitterPriority: (id, output) => {
+    set((state) => ({
+      splitters: state.splitters.map((s) => s.id === id ? { ...s, priorityOutput: output } : s),
+    }));
+  },
+
+  setSplitterFilter: (id, itemId) => {
+    set((state) => ({
+      splitters: state.splitters.map((s) => s.id === id ? { ...s, filterItem: itemId } : s),
+    }));
+  },
+
+  setPendingSplitter: (type) => set({ pendingSplitterType: type }),
+
+  clearCanvas: () => set({ machines: [], connections: [], splitters: [], selectedId: null, selectedConnectionId: null, pendingConnection: null, pendingSplitterType: null }),
 
   getMachine: (id) => get().machines.find((m) => m.id === id),
 

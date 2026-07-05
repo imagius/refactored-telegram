@@ -1,9 +1,9 @@
-// Flow solver: given a factory graph (machines + recipes + connections),
+// Flow solver: given a factory graph (machines + recipes + connections + splitters),
 // compute items/sec through every belt and each machine's utilization.
 
 import type { FactorioData, Recipe, Item } from '../data/types';
 import type { Connection } from '../types/connections';
-import type { PlacedMachine } from '../store/editorStore';
+import type { PlacedMachine, PlacedSplitter } from '../store/editorStore';
 
 export interface MachineFlowResult {
   machineId: string;       // instance id
@@ -39,6 +39,10 @@ interface GraphNode {
   maxOutputs: Map<string, number>;
   // Computed: required inputs per item (items/sec at 100% utilization)
   requiredInputs: Map<string, number>;
+  // Splitter/merger fields
+  isSplitter?: boolean;
+  splitter?: PlacedSplitter;
+  beltCapacity?: number;
 }
 
 interface GraphEdge {
@@ -51,7 +55,8 @@ interface GraphEdge {
 export function solveFlow(
   machines: PlacedMachine[],
   connections: Connection[],
-  data: FactorioData
+  data: FactorioData,
+  splitters: PlacedSplitter[] = [],
 ): FlowResult {
   const warnings: string[] = [];
   const machineResults: Record<string, MachineFlowResult> = {};
@@ -85,6 +90,23 @@ export function solveFlow(
       machineItem,
       maxOutputs,
       requiredInputs,
+    });
+  }
+
+  // Add splitter/merger nodes — they pass items through without consuming/producing
+  for (const s of splitters) {
+    const beltItem = s.beltId ? data.items.find((i) => i.id === s.beltId) : undefined;
+    const beltCapacity = beltItem?.belt?.speed ?? 15;
+    nodes.set(s.id, {
+      id: s.id,
+      machine: { id: s.id, machineId: s.id, x: s.x, y: s.y, rotation: s.rotation },  // stub
+      recipe: undefined,
+      machineItem: undefined,
+      maxOutputs: new Map(),   // dynamic — computed from incoming flow
+      requiredInputs: new Map(),  // splitters don't "require" specific items
+      isSplitter: true,
+      splitter: s,
+      beltCapacity,
     });
   }
 
@@ -123,29 +145,64 @@ export function solveFlow(
   }
 
   const MAX_ITERATIONS = 50;
+  let actualOutputs = new Map<string, Map<string, number>>(); // nodeId → (itemId → items/sec)
+  let actualInputs = new Map<string, Map<string, number>>();
+
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     let changed = false;
 
     // Compute actual outputs based on current utilization
-    const actualOutputs = new Map<string, Map<string, number>>(); // nodeId → (itemId → items/sec)
-    const actualInputs = new Map<string, Map<string, number>>();
+    actualOutputs = new Map<string, Map<string, number>>();
+    actualInputs = new Map<string, Map<string, number>>();
 
     for (const node of nodes.values()) {
       const util = utilization.get(node.id) ?? 0;
       const outs = new Map<string, number>();
       const ins = new Map<string, number>();
-      for (const [itemId, rate] of node.maxOutputs) {
-        outs.set(itemId, rate * util);
+
+      if (node.isSplitter) {
+        // Splitters: compute outputs from incoming flow
+        // Sum all incoming items from incoming edges
+        const inEdges = incoming.get(node.id) ?? [];
+        for (const edge of inEdges) {
+          const sourceOutputs = actualOutputs.get(edge.fromId);
+          if (!sourceOutputs) continue;
+          const sourceOutEdges = outgoing.get(edge.fromId) ?? [];
+          for (const [itemId, sourceRate] of sourceOutputs) {
+            // How many outgoing edges from source carry this item to this splitter or other targets that need it?
+            let relevantEdges = 0;
+            for (const oe of sourceOutEdges) {
+              const targetNode = nodes.get(oe.toId);
+              if (targetNode?.requiredInputs.has(itemId) || (targetNode?.isSplitter)) {
+                relevantEdges++;
+              }
+            }
+            relevantEdges = Math.max(1, relevantEdges);
+            const edgeFlow = Math.min(sourceRate / relevantEdges, edge.capacity);
+            ins.set(itemId, (ins.get(itemId) ?? 0) + edgeFlow);
+          }
+        }
+        // Splitter outputs = inputs (pass-through), split across outputs
+        // Merger outputs = sum of inputs (pass-through)
+        for (const [itemId, rate] of ins) {
+          outs.set(itemId, rate);
+        }
+      } else {
+        for (const [itemId, rate] of node.maxOutputs) {
+          outs.set(itemId, rate * util);
+        }
+        for (const [itemId, rate] of node.requiredInputs) {
+          ins.set(itemId, rate * util);
+        }
       }
-      for (const [itemId, rate] of node.requiredInputs) {
-        ins.set(itemId, rate * util);
-      }
+
       actualOutputs.set(node.id, outs);
       actualInputs.set(node.id, ins);
     }
 
     // For each machine, check if inputs are satisfied
     for (const node of nodes.values()) {
+      if (node.isSplitter) continue;  // splitters don't require specific items
       if (node.requiredInputs.size === 0) continue;  // no inputs needed (e.g., mining drill)
 
       const util = utilization.get(node.id) ?? 0;
@@ -167,7 +224,7 @@ export function solveFlow(
             let relevantEdges = 0;
             for (const oe of sourceOutEdges) {
               const targetNode = nodes.get(oe.toId);
-              if (targetNode?.requiredInputs.has(itemId)) {
+              if (targetNode?.requiredInputs.has(itemId) || targetNode?.isSplitter) {
                 relevantEdges++;
               }
             }
@@ -237,7 +294,7 @@ export function solveFlow(
   // Compute connection flows
   for (const edge of edges) {
     const sourceNode = nodes.get(edge.fromId);
-    if (!sourceNode || !sourceNode.recipe) {
+    if (!sourceNode) {
       connectionResults[edge.connection.id] = {
         connectionId: edge.connection.id,
         itemsPerSec: 0,
@@ -248,22 +305,34 @@ export function solveFlow(
       continue;
     }
 
-    const sourceUtil = utilization.get(edge.fromId) ?? 0;
+    // For splitter sources, use actualOutputs (computed from incoming flow)
+    // For machine sources, use recipe outputs * utilization
+    const sourceOutputs = actualOutputs.get(edge.fromId);
     const sourceOutEdges = outgoing.get(edge.fromId) ?? [];
+
+    if (!sourceOutputs || (sourceOutputs.size === 0)) {
+      connectionResults[edge.connection.id] = {
+        connectionId: edge.connection.id,
+        itemsPerSec: 0,
+        itemIds: [],
+        bottlenecked: false,
+        beltCapacity: edge.capacity,
+      };
+      continue;
+    }
 
     // Sum all items flowing on this edge
     let totalFlow = 0;
     const itemIds: string[] = [];
 
-    for (const [itemId, maxRate] of sourceNode.maxOutputs) {
-      const actualRate = maxRate * sourceUtil;
+    for (const [itemId, actualRate] of sourceOutputs) {
       if (actualRate <= 0) continue;
 
       // Count how many outgoing edges carry this item
       let relevantEdges = 0;
       for (const oe of sourceOutEdges) {
         const targetNode = nodes.get(oe.toId);
-        if (targetNode?.requiredInputs.has(itemId)) {
+        if (targetNode?.requiredInputs.has(itemId) || targetNode?.isSplitter) {
           relevantEdges++;
         }
       }

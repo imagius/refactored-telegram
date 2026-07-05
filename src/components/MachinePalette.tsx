@@ -8,6 +8,8 @@ export function MachinePalette() {
   const data = useEditorStore((s) => s.data);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
+  const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
+  const pendingSplitterType = useEditorStore((s) => s.pendingSplitterType);
   const [search, setSearch] = useState('');
 
   const { machines, belts, beacons } = useMemo(() => {
@@ -71,8 +73,40 @@ export function MachinePalette() {
         {filteredMachines.map(renderItem)}
       </div>
 
-      {!search && belts.length > 0 && (
+      {!search && (
         <>
+          <h3 className="mb-1 mt-2 text-xs font-semibold uppercase text-gray-400">Logistics</h3>
+          <div className="mb-3">
+            <button
+              onClick={() => {
+                setPendingMachine(null);
+                setPendingSplitter(pendingSplitterType === 'splitter' ? null : 'splitter');
+              }}
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                pendingSplitterType === 'splitter'
+                  ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
+                  : 'hover:bg-factorio-border border-l-2 border-transparent'
+              }`}
+            >
+              <span className="text-lg">⑂</span>
+              <span className="text-factorio-text">Splitter</span>
+            </button>
+            <button
+              onClick={() => {
+                setPendingMachine(null);
+                setPendingSplitter(pendingSplitterType === 'merger' ? null : 'merger');
+              }}
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                pendingSplitterType === 'merger'
+                  ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
+                  : 'hover:bg-factorio-border border-l-2 border-transparent'
+              }`}
+            >
+              <span className="text-lg">⊇</span>
+              <span className="text-factorio-text">Merger</span>
+            </button>
+          </div>
+
           <h3 className="mb-1 mt-2 text-xs font-semibold uppercase text-gray-400">Belts</h3>
           <div className="mb-3">{belts.map(renderItem)}</div>
         </>
