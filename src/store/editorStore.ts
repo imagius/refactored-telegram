@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { FactorioData, Item, Recipe } from '../data/types';
 import { loadData, type DatasetVersion } from '../data/loader';
 import type { Connection, ConnectionType, ConnectionSide } from '../types/connections';
+import { autoSave, loadAutoSave, type FactoryState } from './persistence';
 
 export interface PlacedMachine {
   id: string;              // unique instance id
@@ -74,6 +75,7 @@ interface EditorState {
 
   setPendingMachine: (machineId: string | null) => void;
   clearCanvas: () => void;
+  loadFactoryState: (state: FactoryState) => void;
 
   // Helpers
   getMachine: (id: string) => PlacedMachine | undefined;
@@ -245,6 +247,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setPendingSplitter: (type) => set({ pendingSplitterType: type }),
 
   clearCanvas: () => set({ machines: [], connections: [], splitters: [], selectedId: null, selectedConnectionId: null, pendingConnection: null, pendingSplitterType: null }),
+
+  loadFactoryState: (state) => {
+    set({
+      machines: state.machines,
+      connections: state.connections,
+      splitters: state.splitters ?? [],
+      selectedId: null,
+      selectedConnectionId: null,
+      pendingConnection: null,
+      pendingMachineId: null,
+      pendingSplitterType: null,
+    });
+    if (state.dataVersion && state.dataVersion !== get().dataVersion) {
+      get().loadData(state.dataVersion);
+    }
+  },
 
   getMachine: (id) => get().machines.find((m) => m.id === id),
 

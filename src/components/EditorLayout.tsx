@@ -1,17 +1,58 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { MachinePalette } from './MachinePalette';
 import { FactoryCanvas } from './FactoryCanvas';
 import { Inspector } from './Inspector';
+import { Toolbar } from './Toolbar';
+import { autoSave, loadAutoSave } from '../store/persistence';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 export function EditorLayout() {
   const loadData = useEditorStore((s) => s.loadData);
+  const loadFactoryState = useEditorStore((s) => s.loadFactoryState);
   const dataLoading = useEditorStore((s) => s.dataLoading);
   const dataError = useEditorStore((s) => s.dataError);
+  const machines = useEditorStore((s) => s.machines);
+  const connections = useEditorStore((s) => s.connections);
+  const splitters = useEditorStore((s) => s.splitters);
+  const dataVersion = useEditorStore((s) => s.dataVersion);
 
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedRef = useRef(false);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts();
+
+  // Load data on startup
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Load auto-saved factory after data is loaded
+  useEffect(() => {
+    if (!dataLoading && !dataError && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      const saved = loadAutoSave();
+      if (saved && (saved.machines.length > 0 || saved.connections.length > 0)) {
+        loadFactoryState(saved);
+      }
+    }
+  }, [dataLoading, dataError, loadFactoryState]);
+
+  // Auto-save on changes (debounced 1s)
+  useEffect(() => {
+    if (!hasLoadedRef.current) return;  // don't save before we've loaded
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+    saveTimerRef.current = setTimeout(() => {
+      autoSave({ dataVersion, machines, connections, splitters });
+    }, 1000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [machines, connections, splitters, dataVersion]);
 
   if (dataError) {
     return (
@@ -36,21 +77,27 @@ export function EditorLayout() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-factorio-bg">
-      {/* Left: Machine Palette */}
-      <aside className="w-64 flex-shrink-0 border-r border-factorio-border bg-factorio-panel overflow-y-auto">
-        <MachinePalette />
-      </aside>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-factorio-bg">
+      {/* Top toolbar */}
+      <Toolbar />
 
-      {/* Center: Canvas */}
-      <main className="flex-1 relative overflow-hidden">
-        <FactoryCanvas />
-      </main>
+      {/* Main editor area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left: Machine Palette */}
+        <aside className="w-64 flex-shrink-0 border-r border-factorio-border bg-factorio-panel overflow-y-auto">
+          <MachinePalette />
+        </aside>
 
-      {/* Right: Inspector */}
-      <aside className="w-72 flex-shrink-0 border-l border-factorio-border bg-factorio-panel overflow-y-auto">
-        <Inspector />
-      </aside>
+        {/* Center: Canvas */}
+        <main className="flex-1 relative overflow-hidden">
+          <FactoryCanvas />
+        </main>
+
+        {/* Right: Inspector */}
+        <aside className="w-72 flex-shrink-0 border-l border-factorio-border bg-factorio-panel overflow-y-auto">
+          <Inspector />
+        </aside>
+      </div>
     </div>
   );
 }

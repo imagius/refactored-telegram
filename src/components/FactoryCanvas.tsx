@@ -364,7 +364,7 @@ export function FactoryCanvas() {
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
-
+  // ESC cancels pending placement (also handled globally, but this catches canvas-focused events)
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -474,11 +474,12 @@ export function FactoryCanvas() {
       )}
 
       {/* Status bar */}
-      {flowResult && (machines.length > 0) && (
+      {flowResult && (machines.length > 0 || splitters.length > 0) && (
         <div className="absolute bottom-4 left-4 rounded-lg border border-factorio-border bg-factorio-panel px-3 py-2 text-xs shadow-lg z-10">
           <div className="flex gap-4">
             <span className="text-factorio-text">⚙️ {(flowResult.totalPower / 1000).toFixed(2)} MW</span>
             <span className="text-factorio-text">🔧 {machines.length} machines</span>
+            {splitters.length > 0 && <span className="text-factorio-text">⑂ {splitters.length} splitters</span>}
             <span className="text-factorio-text">🔗 {connections.length} belts</span>
             {flowResult.warnings.length > 0 && (
               <span className="text-factorio-yellow">⚠️ {flowResult.warnings.length} warnings</span>
