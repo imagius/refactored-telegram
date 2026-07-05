@@ -55,7 +55,7 @@ Inspired by [Satisfactory Modeler](https://store.steampowered.com/app/3187030/Sa
 
 ## Tech Stack
 
-- React 18 + TypeScript + Vite
+- React 19 + TypeScript + Vite
 - Konva.js (react-konva) for 2D canvas rendering
 - Zustand for state management
 - Tailwind CSS for styling

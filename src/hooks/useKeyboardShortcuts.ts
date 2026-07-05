@@ -48,12 +48,18 @@ export function useKeyboardShortcuts() {
         if (pendingMachineId) setPendingMachine(null);
         if (pendingConnection) setPendingConnection(null);
         if (pendingSplitterType) setPendingSplitter(null);
+        const state = useEditorStore.getState();
+        if (state.pendingBeaconId) state.setPendingBeacon(null);
         return;
       }
 
       // Delete/Backspace — remove selected
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedId) {
+        const state = useEditorStore.getState();
+        if (state.selectedIds.length > 1) {
+          e.preventDefault();
+          state.removeSelected();
+        } else if (selectedId) {
           e.preventDefault();
           removeMachine(selectedId);
         } else if (selectedConnectionId) {

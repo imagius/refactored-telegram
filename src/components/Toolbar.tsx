@@ -8,18 +8,23 @@ interface ToolbarProps {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  onZoomFit: () => void;
 }
 
-export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
+export function Toolbar({ undo, redo, canUndo, canRedo, onZoomFit }: ToolbarProps) {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
   const splitters = useEditorStore((s) => s.splitters);
+  const beacons = useEditorStore((s) => s.beacons);
   const dataVersion = useEditorStore((s) => s.dataVersion);
   const setDataVersion = useEditorStore((s) => s.setDataVersion);
   const loadFactoryState = useEditorStore((s) => s.loadFactoryState);
   const clearCanvas = useEditorStore((s) => s.clearCanvas);
   const gridSnap = useEditorStore((s) => s.gridSnap);
   const toggleGridSnap = useEditorStore((s) => s.toggleGridSnap);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedId = useEditorStore((s) => s.selectedId);
+  const createGroup = useEditorStore((s) => s.createGroup);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showSlots, setShowSlots] = useState(false);
@@ -27,7 +32,7 @@ export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
   const [slots, setSlots] = useState<Record<string, unknown>>({});
 
   const handleExport = () => {
-    exportFactory({ dataVersion, machines, connections, splitters }, 'factorio-modeler-factory.json');
+    exportFactory({ dataVersion, machines, connections, splitters, beacons }, 'factorio-modeler-factory.json');
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,7 +47,7 @@ export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
 
   const handleSaveSlot = () => {
     if (!slotName.trim()) return;
-    saveToSlot(slotName.trim(), { dataVersion, machines, connections, splitters });
+    saveToSlot(slotName.trim(), { dataVersion, machines, connections, splitters, beacons });
     setSlotName('');
     setSlots(getSlots());
   };
@@ -174,6 +179,32 @@ export function Toolbar({ undo, redo, canUndo, canRedo }: ToolbarProps) {
         title="Toggle grid snapping"
       >
         📐 Grid
+      </button>
+
+      {/* Create group from selection */}
+      {(selectedIds.length >= 2 || selectedId) && (
+        <button
+          onClick={() => {
+            const ids = selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : []);
+            if (ids.length > 0) {
+              const name = prompt('Group name:', 'Sub-factory');
+              if (name) createGroup(name, ids);
+            }
+          }}
+          className="rounded border border-factorio-border bg-factorio-bg px-2 py-0.5 text-xs text-factorio-text hover:bg-factorio-border"
+          title="Create sub-factory group from selected machines"
+        >
+          📦 Group
+        </button>
+      )}
+
+      {/* Zoom to fit */}
+      <button
+        onClick={onZoomFit}
+        className="rounded border border-factorio-border bg-factorio-bg px-2 py-0.5 text-xs text-factorio-text hover:bg-factorio-border"
+        title="Zoom to fit all content"
+      >
+        🔍 Fit
       </button>
 
       {/* Clear */}

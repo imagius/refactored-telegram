@@ -32,6 +32,29 @@ export interface PlacedSplitter {
   filterItem?: string;       // item id for filter splitters
 }
 
+// Sub-factory group (outpost)
+export interface PlacedGroup {
+  id: string;
+  name: string;
+  color: string;
+  machineIds: string[];      // machines in this group
+  collapsed: boolean;
+  // Cached bounds (computed from member positions)
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Beacon node
+export interface PlacedBeacon {
+  id: string;
+  beaconId: string;       // Factorio item id (e.g., 'beacon')
+  x: number;
+  y: number;
+  moduleId?: string;      // module inside the beacon
+}
+
 interface EditorState {
   // Data
   data: FactorioData | null;
@@ -43,9 +66,13 @@ interface EditorState {
   machines: PlacedMachine[];
   connections: Connection[];
   splitters: PlacedSplitter[];
+  beacons: PlacedBeacon[];
+  groups: PlacedGroup[];
   selectedId: string | null;
+  selectedIds: string[];            // multi-select
   selectedConnectionId: string | null;
   pendingMachineId: string | null;
+  pendingBeaconId: string | null;
   pendingConnection: PendingConnection | null;
   pendingSplitterType: 'splitter' | 'merger' | null;
   gridSnap: boolean;
@@ -57,7 +84,6 @@ interface EditorState {
 
   addMachine: (machineId: string, x: number, y: number) => void;
   removeMachine: (id: string) => void;
-  selectMachine: (id: string | null) => void;
   moveMachine: (id: string, x: number, y: number) => void;
   rotateMachine: (id: string) => void;
   setRecipe: (machineId: string, recipeId: string | undefined) => void;
@@ -75,11 +101,30 @@ interface EditorState {
   setSplitterFilter: (id: string, itemId: string | undefined) => void;
   setPendingSplitter: (type: 'splitter' | 'merger' | null) => void;
 
+  addBeacon: (beaconId: string, x: number, y: number) => void;
+  removeBeacon: (id: string) => void;
+  moveBeacon: (id: string, x: number, y: number) => void;
+  setBeaconModule: (id: string, moduleId: string | undefined) => void;
+
   toggleGridSnap: () => void;
 
+  // Groups
+  createGroup: (name: string, machineIds: string[]) => void;
+  removeGroup: (id: string) => void;
+  renameGroup: (id: string, name: string) => void;
+  toggleGroupCollapse: (id: string) => void;
+  recalcGroupBounds: (id: string) => void;
+
   setPendingMachine: (machineId: string | null) => void;
+  setPendingBeacon: (beaconId: string | null) => void;
   clearCanvas: () => void;
   loadFactoryState: (state: FactoryState) => void;
+
+  // Multi-select
+  selectMachine: (id: string | null, additive?: boolean) => void;
+  selectMultiple: (ids: string[]) => void;
+  clearSelection: () => void;
+  removeSelected: () => void;
 
   // Helpers
   getMachine: (id: string) => PlacedMachine | undefined;
@@ -92,6 +137,11 @@ interface EditorState {
 let machineCounter = 0;
 let connectionCounter = 0;
 let splitterCounter = 0;
+let groupCounter = 0;
+
+const GROUP_COLORS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
+];
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   data: null,
@@ -102,9 +152,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   machines: [],
   connections: [],
   splitters: [],
+  beacons: [],
+  groups: [],
   selectedId: null,
+  selectedIds: [],
   selectedConnectionId: null,
   pendingMachineId: null,
+  pendingBeaconId: null,
   pendingConnection: null,
   pendingSplitterType: null,
   gridSnap: false,
@@ -150,7 +204,41 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  selectMachine: (id) => set({ selectedId: id }),
+  selectMachine: (id, additive = false) => {
+    if (id === null) {
+      set({ selectedId: null, selectedIds: [], selectedConnectionId: null });
+      return;
+    }
+    if (additive) {
+      set((state) => {
+        const ids = state.selectedIds.includes(id)
+          ? state.selectedIds.filter((sid) => sid !== id)
+          : [...state.selectedIds, id];
+        return { selectedId: id, selectedIds: ids, selectedConnectionId: null };
+      });
+    } else {
+      set({ selectedId: id, selectedIds: [id], selectedConnectionId: null });
+    }
+  },
+
+  selectMultiple: (ids) => set({ selectedIds: ids, selectedId: ids[0] ?? null, selectedConnectionId: null }),
+
+  clearSelection: () => set({ selectedId: null, selectedIds: [], selectedConnectionId: null }),
+
+  removeSelected: () => {
+    set((state) => {
+      const ids = state.selectedIds.length > 0 ? state.selectedIds : (state.selectedId ? [state.selectedId] : []);
+      return {
+        machines: state.machines.filter((m) => !ids.includes(m.id)),
+        connections: state.connections.filter((c) => !ids.includes(c.fromMachineId) && !ids.includes(c.toMachineId)),
+        splitters: state.splitters.filter((s) => !ids.includes(s.id)),
+        beacons: state.beacons.filter((b) => !ids.includes(b.id)),
+        selectedId: null,
+        selectedIds: [],
+        selectedConnectionId: null,
+      };
+    });
+  },
 
   moveMachine: (id, x, y) => {
     set((state) => ({
@@ -185,6 +273,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setPendingMachine: (machineId) => set({ pendingMachineId: machineId }),
+
+  setPendingBeacon: (beaconId) => set({ pendingBeaconId: beaconId, pendingMachineId: null, pendingSplitterType: null }),
 
   addConnection: (fromMachineId, fromSide, toMachineId, toSide, type) => {
     const id = `conn-${++connectionCounter}`;
@@ -252,19 +342,110 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setPendingSplitter: (type) => set({ pendingSplitterType: type }),
 
+  addBeacon: (beaconId, x, y) => {
+    const id = `beacon-${++splitterCounter}`;
+    const beacon: PlacedBeacon = { id, beaconId, x, y };
+    set((state) => ({
+      beacons: [...state.beacons, beacon],
+      selectedId: id,
+      selectedIds: [id],
+      pendingMachineId: null,
+    }));
+  },
+
+  removeBeacon: (id) => {
+    set((state) => ({
+      beacons: state.beacons.filter((b) => b.id !== id),
+      selectedId: state.selectedId === id ? null : state.selectedId,
+      selectedIds: state.selectedIds.filter((sid) => sid !== id),
+    }));
+  },
+
+  moveBeacon: (id, x, y) => {
+    set((state) => ({
+      beacons: state.beacons.map((b) => b.id === id ? { ...b, x, y } : b),
+    }));
+  },
+
+  setBeaconModule: (id, moduleId) => {
+    set((state) => ({
+      beacons: state.beacons.map((b) => b.id === id ? { ...b, moduleId } : b),
+    }));
+  },
+
   toggleGridSnap: () => set((state) => ({ gridSnap: !state.gridSnap })),
 
-  clearCanvas: () => set({ machines: [], connections: [], splitters: [], selectedId: null, selectedConnectionId: null, pendingConnection: null, pendingSplitterType: null }),
+  createGroup: (name, machineIds) => {
+    const id = `group-${++groupCounter}`;
+    const machines = get().machines.filter((m) => machineIds.includes(m.id));
+    if (machines.length === 0) return;
+
+    const minX = Math.min(...machines.map((m) => m.x));
+    const minY = Math.min(...machines.map((m) => m.y));
+    const maxX = Math.max(...machines.map((m) => m.x + 60));  // MACHINE_SIZE
+    const maxY = Math.max(...machines.map((m) => m.y + 60));
+
+    const group: PlacedGroup = {
+      id, name, machineIds,
+      color: GROUP_COLORS[groupCounter % GROUP_COLORS.length],
+      collapsed: false,
+      x: minX - 10,
+      y: minY - 10,
+      width: maxX - minX + 20,
+      height: maxY - minY + 20,
+    };
+    set((state) => ({ groups: [...state.groups, group] }));
+  },
+
+  removeGroup: (id) => {
+    set((state) => ({ groups: state.groups.filter((g) => g.id !== id) }));
+  },
+
+  renameGroup: (id, name) => {
+    set((state) => ({
+      groups: state.groups.map((g) => g.id === id ? { ...g, name } : g),
+    }));
+  },
+
+  toggleGroupCollapse: (id) => {
+    set((state) => ({
+      groups: state.groups.map((g) => g.id === id ? { ...g, collapsed: !g.collapsed } : g),
+    }));
+  },
+
+  recalcGroupBounds: (id) => {
+    const group = get().groups.find((g) => g.id === id);
+    if (!group) return;
+    const machines = get().machines.filter((m) => group.machineIds.includes(m.id));
+    if (machines.length === 0) return;
+
+    const minX = Math.min(...machines.map((m) => m.x));
+    const minY = Math.min(...machines.map((m) => m.y));
+    const maxX = Math.max(...machines.map((m) => m.x + 60));
+    const maxY = Math.max(...machines.map((m) => m.y + 60));
+
+    set((state) => ({
+      groups: state.groups.map((g) =>
+        g.id === id ? { ...g, x: minX - 10, y: minY - 10, width: maxX - minX + 20, height: maxY - minY + 20 } : g
+      ),
+    }));
+  },
+
+  clearCanvas: () => set({ machines: [], connections: [], splitters: [], beacons: [], groups: [], selectedId: null, selectedIds: [], selectedConnectionId: null, pendingConnection: null, pendingSplitterType: null, pendingBeaconId: null }),
 
   loadFactoryState: (state) => {
     set({
       machines: state.machines,
       connections: state.connections,
       splitters: state.splitters ?? [],
+      beacons: state.beacons ?? [],
+      groups: state.groups ?? [],
       selectedId: null,
+      selectedIds: [],
       selectedConnectionId: null,
       pendingConnection: null,
       pendingMachineId: null,
+      pendingBeaconId: null,
       pendingSplitterType: null,
     });
     if (state.dataVersion && state.dataVersion !== get().dataVersion) {

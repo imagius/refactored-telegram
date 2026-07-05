@@ -7,7 +7,9 @@ import type { Item } from '../data/types';
 export function MachinePalette() {
   const data = useEditorStore((s) => s.data);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
+  const setPendingBeacon = useEditorStore((s) => s.setPendingBeacon);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
+  const pendingBeaconId = useEditorStore((s) => s.pendingBeaconId);
   const setPendingSplitter = useEditorStore((s) => s.setPendingSplitter);
   const pendingSplitterType = useEditorStore((s) => s.pendingSplitterType);
   const [search, setSearch] = useState('');
@@ -115,7 +117,26 @@ export function MachinePalette() {
       {!search && beacons.length > 0 && (
         <>
           <h3 className="mb-1 mt-2 text-xs font-semibold uppercase text-gray-400">Beacons</h3>
-          <div className="mb-3">{beacons.map(renderItem)}</div>
+          <div className="mb-3">
+            {beacons.map((item) => {
+              const icon = getIcon(item.id);
+              const isSelected = pendingBeaconId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setPendingBeacon(isSelected ? null : item.id)}
+                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                    isSelected
+                      ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
+                      : 'hover:bg-factorio-border border-l-2 border-transparent'
+                  }`}
+                >
+                  {icon && <IconSprite icon={icon} size={24} />}
+                  <span className="text-factorio-text truncate">{item.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </>
       )}
     </div>

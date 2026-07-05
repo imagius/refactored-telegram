@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Group, Circle, Arrow } from 'react-konva';
 import type Konva from 'konva';
-import { useEditorStore, type PlacedMachine, type PlacedSplitter } from '../store/editorStore';
+import { useEditorStore, type PlacedMachine, type PlacedSplitter, type PlacedGroup } from '../store/editorStore';
 import { getPortPosition, type ConnectionSide } from '../types/connections';
 import { useFlowSolver } from '../hooks/useFlowSolver';
 
@@ -78,11 +78,13 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
   const machineItem = useEditorStore((s) => s.getMachineItem(machine.machineId));
   const recipe = machine.recipeId ? useEditorStore((s) => s.getRecipe(machine.recipeId!)) : undefined;
   const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const moveMachine = useEditorStore((s) => s.moveMachine);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
 
   const isSelected = selectedId === machine.id;
+  const isInMultiSelect = selectedIds.includes(machine.id);
   const machineName = machineItem?.name || machine.machineId;
   const displayName = recipe?.name || machineName;
   const label = displayName.length > 12 ? displayName.substring(0, 10) + '...' : displayName;
@@ -101,11 +103,11 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
       draggable
       onClick={(e) => {
         e.cancelBubble = true;
-        selectMachine(machine.id);
+        selectMachine(machine.id, e.evt.shiftKey);
       }}
       onTap={(e) => {
         e.cancelBubble = true;
-        selectMachine(machine.id);
+        selectMachine(machine.id, (e.evt as unknown as MouseEvent).shiftKey);
       }}
       onDragEnd={(e) => {
         let x = e.target.x();
@@ -123,9 +125,9 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
         width={MACHINE_SIZE}
         height={MACHINE_SIZE}
         cornerRadius={6}
-        fill={isSelected ? '#2a4a6e' : '#1e2a4a'}
-        stroke={isSelected ? '#e94560' : '#3a3a5a'}
-        strokeWidth={isSelected ? 2 : 1}
+        fill={isSelected || isInMultiSelect ? '#2a4a6e' : '#1e2a4a'}
+        stroke={isSelected ? '#e94560' : isInMultiSelect ? '#60a5fa' : '#3a3a5a'}
+        strokeWidth={isSelected || isInMultiSelect ? 2 : 1}
         shadowColor="black"
         shadowBlur={4}
         shadowOffsetY={2}
@@ -262,7 +264,100 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
 const SPLITTER_WIDTH = 60;
 const SPLITTER_HEIGHT = 30;
 
-function SplitterNode({ splitter }: { splitter: PlacedSplitter; flowResult: ReturnType<typeof useFlowSolver> }) {
+const BEACON_SIZE = 50;
+
+function BeaconNode({ beacon }: { beacon: import('../store/editorStore').PlacedBeacon }) {
+  const data = useEditorStore((s) => s.data);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedId = useEditorStore((s) => s.selectedId);
+  const selectMachine = useEditorStore((s) => s.selectMachine);
+  const moveBeacon = useEditorStore((s) => s.moveBeacon);
+  const removeBeacon = useEditorStore((s) => s.removeBeacon);
+
+  const beaconItem = data?.items.find((i) => i.id === beacon.beaconId);
+  const beaconProps = beaconItem?.beacon;
+  const isSelected = selectedId === beacon.id || selectedIds.includes(beacon.id);
+  const range = beaconProps?.range ?? 3;
+  // Convert tile range to canvas pixels (machine is 60px = 3 tiles, so 1 tile ≈ 20px)
+  const rangePixels = range * 20;
+  const moduleName = beacon.moduleId ? data?.items.find((i) => i.id === beacon.moduleId)?.name : undefined;
+
+  return (
+    <Group
+      x={beacon.x}
+      y={beacon.y}
+      draggable
+      onClick={(e) => {
+        e.cancelBubble = true;
+        selectMachine(beacon.id, e.evt.shiftKey);
+      }}
+      onDragEnd={(e) => {
+        let x = e.target.x();
+        let y = e.target.y();
+        const gridSnap = useEditorStore.getState().gridSnap;
+        const gridSize = useEditorStore.getState().gridSize;
+        if (gridSnap) {
+          x = Math.round(x / gridSize) * gridSize;
+          y = Math.round(y / gridSize) * gridSize;
+        }
+        moveBeacon(beacon.id, x, y);
+      }}
+    >
+      {/* Effect radius circle */}
+      <Circle
+        x={BEACON_SIZE / 2}
+        y={BEACON_SIZE / 2}
+        radius={rangePixels}
+        fill="rgba(233, 69, 96, 0.05)"
+        stroke="rgba(233, 69, 96, 0.3)"
+        strokeWidth={1}
+        dash={[4, 4]}
+        listening={false}
+      />
+      <Rect
+        width={BEACON_SIZE}
+        height={BEACON_SIZE}
+        cornerRadius={4}
+        fill={isSelected ? '#5a2a3e' : '#3a1a2e'}
+        stroke={isSelected ? '#e94560' : '#5a3a4a'}
+        strokeWidth={isSelected ? 2 : 1}
+      />
+      <Text
+        text="📡"
+        fontSize={16}
+        width={BEACON_SIZE}
+        align="center"
+        y={BEACON_SIZE / 2 - 10}
+      />
+      {moduleName && (
+        <Text
+          text={moduleName.length > 10 ? moduleName.substring(0, 8) + '...' : moduleName}
+          fontSize={7}
+          fill="#c4c4c4"
+          width={BEACON_SIZE}
+          align="center"
+          y={BEACON_SIZE - 10}
+          listening={false}
+        />
+      )}
+      {isSelected && (
+        <Text
+          text="✕"
+          fontSize={12}
+          fill="#f87171"
+          x={BEACON_SIZE - 4}
+          y={-16}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            removeBeacon(beacon.id);
+          }}
+        />
+      )}
+    </Group>
+  );
+}
+
+function SplitterNode({ splitter }: { splitter: PlacedSplitter }) {
   const selectedId = useEditorStore((s) => s.selectedId);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const moveSplitter = useEditorStore((s) => s.moveSplitter);
@@ -348,15 +443,71 @@ function SplitterNode({ splitter }: { splitter: PlacedSplitter; flowResult: Retu
   );
 }
 
+function GroupNode({ group }: { group: PlacedGroup }) {
+  const toggleGroupCollapse = useEditorStore((s) => s.toggleGroupCollapse);
+  const removeGroup = useEditorStore((s) => s.removeGroup);
+
+  return (
+    <Group
+      x={group.x}
+      y={group.y}
+      listening={false}  // don't intercept clicks — machines should be clickable through the group
+    >
+      <Rect
+        width={group.width}
+        height={group.height}
+        cornerRadius={8}
+        fill={group.color + '15'}  // 15 = ~8% opacity hex suffix
+        stroke={group.color}
+        strokeWidth={2}
+        dash={[6, 4]}
+      />
+      <Rect
+        x={0}
+        y={-20}
+        width={Math.max(80, group.name.length * 7 + 40)}
+        height={18}
+        cornerRadius={4}
+        fill={group.color}
+        opacity={0.8}
+        listening={true}
+        onClick={(e) => { e.cancelBubble = true; toggleGroupCollapse(group.id); }}
+      />
+      <Text
+        text={group.name}
+        x={6}
+        y={-16}
+        fontSize={11}
+        fill="#fff"
+        fontStyle="bold"
+        listening={false}
+      />
+      <Text
+        text="✕"
+        fontSize={11}
+        fill="#fff"
+        x={Math.max(70, group.name.length * 7 + 30)}
+        y={-16}
+        listening={true}
+        onClick={(e) => { e.cancelBubble = true; removeGroup(group.id); }}
+      />
+    </Group>
+  );
+}
+
 export function FactoryCanvas() {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
   const splitters = useEditorStore((s) => s.splitters);
+  const beacons = useEditorStore((s) => s.beacons);
+  const groups = useEditorStore((s) => s.groups);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
+  const pendingBeaconId = useEditorStore((s) => s.pendingBeaconId);
   const pendingConnection = useEditorStore((s) => s.pendingConnection);
   const pendingSplitterType = useEditorStore((s) => s.pendingSplitterType);
   const addMachine = useEditorStore((s) => s.addMachine);
   const addSplitter = useEditorStore((s) => s.addSplitter);
+  const addBeacon = useEditorStore((s) => s.addBeacon);
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const setPendingMachine = useEditorStore((s) => s.setPendingMachine);
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
@@ -385,13 +536,14 @@ export function FactoryCanvas() {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (pendingMachineId) setPendingMachine(null);
+        if (pendingBeaconId) useEditorStore.getState().setPendingBeacon(null);
         if (pendingConnection) setPendingConnection(null);
         if (pendingSplitterType) setPendingSplitter(null);
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [pendingMachineId, pendingConnection, pendingSplitterType, setPendingMachine, setPendingConnection, setPendingSplitter]);
+  }, [pendingMachineId, pendingBeaconId, pendingConnection, pendingSplitterType, setPendingMachine, setPendingConnection, setPendingSplitter]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const stage = e.target.getStage();
@@ -409,6 +561,13 @@ export function FactoryCanvas() {
           const worldY = (pointerPos.y - pos.y) / scale;
           addMachine(pendingMachineId, worldX - MACHINE_SIZE / 2, worldY - MACHINE_SIZE / 2);
         }
+      } else if (pendingBeaconId) {
+        const pointerPos = stage.getPointerPosition();
+        if (pointerPos) {
+          const worldX = (pointerPos.x - pos.x) / scale;
+          const worldY = (pointerPos.y - pos.y) / scale;
+          addBeacon(pendingBeaconId, worldX - BEACON_SIZE / 2, worldY - BEACON_SIZE / 2);
+        }
       } else if (pendingSplitterType) {
         const pointerPos = stage.getPointerPosition();
         if (pointerPos) {
@@ -420,13 +579,56 @@ export function FactoryCanvas() {
         selectMachine(null);
       }
     }
-  }, [pendingMachineId, pendingConnection, pendingSplitterType, pos, scale, addMachine, addSplitter, selectMachine, setPendingConnection, setPendingSplitter]);
+  }, [pendingMachineId, pendingBeaconId, pendingConnection, pendingSplitterType, pos, scale, addMachine, addBeacon, addSplitter, selectMachine, setPendingConnection, setPendingSplitter]);
 
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     const delta = e.evt.deltaY > 0 ? 0.9 : 1.1;
     setScale((s) => Math.max(0.2, Math.min(3, s * delta)));
   };
+
+  // Zoom to fit all content
+  const zoomFit = useCallback(() => {
+    const allNodes = [
+      ...machines.map((m) => ({ x: m.x, y: m.y, w: MACHINE_SIZE, h: MACHINE_SIZE })),
+      ...splitters.map((s) => ({ x: s.x, y: s.y, w: SPLITTER_WIDTH, h: SPLITTER_HEIGHT })),
+      ...beacons.map((b) => ({ x: b.x, y: b.y, w: BEACON_SIZE, h: BEACON_SIZE })),
+    ];
+    if (allNodes.length === 0) return;
+
+    const minX = Math.min(...allNodes.map((n) => n.x));
+    const minY = Math.min(...allNodes.map((n) => n.y));
+    const maxX = Math.max(...allNodes.map((n) => n.x + n.w));
+    const maxY = Math.max(...allNodes.map((n) => n.y + n.h));
+
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const padding = 80;
+
+    const scaleX = (size.width - padding * 2) / contentW;
+    const scaleY = (size.height - padding * 2) / contentH;
+    const newScale = Math.min(scaleX, scaleY, 2);
+    const clampedScale = Math.max(0.2, newScale);
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    setScale(clampedScale);
+    setPos({
+      x: size.width / 2 - centerX * clampedScale,
+      y: size.height / 2 - centerY * clampedScale,
+    });
+  }, [machines, splitters, beacons, size]);
+
+  // Expose zoomFit via window for parent to call
+  const zoomFitRef = useRef(zoomFit);
+  zoomFitRef.current = zoomFit;
+  useEffect(() => {
+    (window as unknown as { __zoomFit?: () => void }).__zoomFit = () => zoomFitRef.current();
+    return () => {
+      delete (window as unknown as { __zoomFit?: () => void }).__zoomFit;
+    };
+  }, []);
 
   return (
     <div ref={containerRef} className="absolute inset-0">
@@ -435,7 +637,7 @@ export function FactoryCanvas() {
         height={size.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        draggable={!pendingMachineId && !pendingConnection && !pendingSplitterType}
+        draggable={!pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType}
         onDragEnd={(e) => {
           setPos({ x: e.target.x(), y: e.target.y() });
         }}
@@ -453,7 +655,17 @@ export function FactoryCanvas() {
 
       {/* Splitter nodes */}
       {splitters.map((s) => (
-        <SplitterNode key={s.id} splitter={s} flowResult={flowResult} />
+        <SplitterNode key={s.id} splitter={s} />
+      ))}
+
+      {/* Beacon nodes (behind machines, but in front of belts) */}
+      {beacons.map((b) => (
+        <BeaconNode key={b.id} beacon={b} />
+      ))}
+
+      {/* Render groups (behind everything) */}
+      {groups.map((g) => (
+        <GroupNode key={g.id} group={g} />
       ))}
 
       {/* Render connections first (behind machines) */}
@@ -489,16 +701,34 @@ export function FactoryCanvas() {
         </div>
       )}
 
+      {/* Hint when placing beacon */}
+      {pendingBeaconId && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-accent bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
+          Click on canvas to place beacon (ESC to cancel)
+        </div>
+      )}
+
       {/* Status bar */}
-      {flowResult && (machines.length > 0 || splitters.length > 0) && (
+      {flowResult && (machines.length > 0 || splitters.length > 0 || beacons.length > 0 || groups.length > 0) && (
         <div className="absolute bottom-4 left-4 rounded-lg border border-factorio-border bg-factorio-panel px-3 py-2 text-xs shadow-lg z-10">
-          <div className="flex gap-4">
-            <span className="text-factorio-text">⚙️ {(flowResult.totalPower / 1000).toFixed(2)} MW</span>
-            <span className="text-factorio-text">🔧 {machines.length} machines</span>
-            {splitters.length > 0 && <span className="text-factorio-text">⑂ {splitters.length} splitters</span>}
-            <span className="text-factorio-text">🔗 {connections.length} belts</span>
-            {flowResult.warnings.length > 0 && (
-              <span className="text-factorio-yellow">⚠️ {flowResult.warnings.length} warnings</span>
+          <div className="flex flex-col gap-1">
+            <div className="flex gap-4">
+              <span className="text-factorio-text">⚙️ {(flowResult.totalPower / 1000).toFixed(2)} MW</span>
+              <span className="text-factorio-text">🔧 {machines.length} machines</span>
+              {splitters.length > 0 && <span className="text-factorio-text">⑂ {splitters.length} splitters</span>}
+              {beacons.length > 0 && <span className="text-factorio-text">📡 {beacons.length} beacons</span>}
+              {groups.length > 0 && <span className="text-factorio-text">📦 {groups.length} groups</span>}
+              <span className="text-factorio-text">🔗 {connections.length} belts</span>
+              {flowResult.warnings.length > 0 && (
+                <span className="text-factorio-yellow">⚠️ {flowResult.warnings.length} warnings</span>
+              )}
+            </div>
+            {/* Pollution summary */}
+            {flowResult.totalPollution !== undefined && flowResult.totalPollution > 0 && (
+              <div className="flex gap-4 text-gray-400">
+                <span>☁️ {flowResult.totalPollution.toFixed(1)}/m pollution</span>
+                <span>📊 {flowResult.totalUtilization !== undefined ? `${Math.round(flowResult.totalUtilization * 100)}% avg util` : ''}</span>
+              </div>
             )}
           </div>
         </div>

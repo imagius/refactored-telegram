@@ -1,6 +1,6 @@
 // Persistence: auto-save to localStorage, export/import as JSON files
 
-import type { PlacedMachine, PlacedSplitter } from '../store/editorStore';
+import type { PlacedMachine, PlacedSplitter, PlacedBeacon, PlacedGroup } from '../store/editorStore';
 import type { Connection } from '../types/connections';
 import type { DatasetVersion } from '../data/loader';
 
@@ -10,6 +10,8 @@ export interface FactoryState {
   machines: PlacedMachine[];
   connections: Connection[];
   splitters: PlacedSplitter[];
+  beacons?: PlacedBeacon[];   // optional for backward compat
+  groups?: PlacedGroup[];     // optional for backward compat
   savedAt: string;         // ISO timestamp
   name?: string;
 }

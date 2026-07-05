@@ -16,6 +16,8 @@ export function EditorLayout() {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
   const splitters = useEditorStore((s) => s.splitters);
+  const beacons = useEditorStore((s) => s.beacons);
+  const groups = useEditorStore((s) => s.groups);
   const dataVersion = useEditorStore((s) => s.dataVersion);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,6 +28,12 @@ export function EditorLayout() {
 
   // Undo/redo
   const { undo, redo, canUndo, canRedo } = useUndoRedo();
+
+  // Zoom to fit handler — calls the function exposed by FactoryCanvas
+  const handleZoomFit = () => {
+    const fn = (window as unknown as { __zoomFit?: () => void }).__zoomFit;
+    if (fn) fn();
+  };
 
   // Load data on startup
   useEffect(() => {
@@ -50,13 +58,13 @@ export function EditorLayout() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(() => {
-      autoSave({ dataVersion, machines, connections, splitters });
+      autoSave({ dataVersion, machines, connections, splitters, beacons, groups });
     }, 1000);
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [machines, connections, splitters, dataVersion]);
+  }, [machines, connections, splitters, beacons, groups, dataVersion]);
 
   if (dataError) {
     return (
@@ -83,7 +91,7 @@ export function EditorLayout() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-factorio-bg">
       {/* Top toolbar */}
-      <Toolbar undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} />
+      <Toolbar undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onZoomFit={handleZoomFit} />
 
       {/* Main editor area */}
       <div className="flex flex-1 overflow-hidden">

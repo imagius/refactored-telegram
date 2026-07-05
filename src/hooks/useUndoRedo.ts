@@ -2,13 +2,15 @@
 // Implemented as a lightweight wrapper that snapshots the machines/connections/splitters arrays
 
 import { useRef, useCallback, useEffect } from 'react';
-import { useEditorStore, type PlacedMachine, type PlacedSplitter } from '../store/editorStore';
+import { useEditorStore, type PlacedMachine, type PlacedSplitter, type PlacedBeacon, type PlacedGroup } from '../store/editorStore';
 import type { Connection } from '../types/connections';
 
 interface Snapshot {
   machines: PlacedMachine[];
   connections: Connection[];
   splitters: PlacedSplitter[];
+  beacons: PlacedBeacon[];
+  groups: PlacedGroup[];
 }
 
 const MAX_HISTORY = 50;
@@ -22,6 +24,8 @@ export function useUndoRedo() {
   const machines = useEditorStore((s) => s.machines);
   const connections = useEditorStore((s) => s.connections);
   const splitters = useEditorStore((s) => s.splitters);
+  const beacons = useEditorStore((s) => s.beacons);
+  const groups = useEditorStore((s) => s.groups);
   const loadFactoryState = useEditorStore((s) => s.loadFactoryState);
   const dataVersion = useEditorStore((s) => s.dataVersion);
 
@@ -29,14 +33,16 @@ export function useUndoRedo() {
   useEffect(() => {
     if (isApplying.current) return;
 
-    const current: Snapshot = { machines, connections, splitters };
+    const current: Snapshot = { machines, connections, splitters, beacons, groups };
     const last = lastSnapshot.current;
 
     // Only push if something actually changed
     if (last && (
       last.machines !== machines ||
       last.connections !== connections ||
-      last.splitters !== splitters
+      last.splitters !== splitters ||
+      last.beacons !== beacons ||
+      last.groups !== groups
     )) {
       undoStack.current.push(last);
       if (undoStack.current.length > MAX_HISTORY) {
@@ -47,7 +53,7 @@ export function useUndoRedo() {
     }
 
     lastSnapshot.current = current;
-  }, [machines, connections, splitters]);
+  }, [machines, connections, splitters, beacons, groups]);
 
   const undo = useCallback(() => {
     if (undoStack.current.length === 0) return;
@@ -57,6 +63,8 @@ export function useUndoRedo() {
       machines: useEditorStore.getState().machines,
       connections: useEditorStore.getState().connections,
       splitters: useEditorStore.getState().splitters,
+      beacons: useEditorStore.getState().beacons,
+      groups: useEditorStore.getState().groups,
     };
     redoStack.current.push(current);
 
@@ -67,6 +75,8 @@ export function useUndoRedo() {
       machines: prev.machines,
       connections: prev.connections,
       splitters: prev.splitters,
+      beacons: prev.beacons,
+      groups: prev.groups,
       savedAt: new Date().toISOString(),
     });
     setTimeout(() => { isApplying.current = false; }, 0);
@@ -80,6 +90,8 @@ export function useUndoRedo() {
       machines: useEditorStore.getState().machines,
       connections: useEditorStore.getState().connections,
       splitters: useEditorStore.getState().splitters,
+      beacons: useEditorStore.getState().beacons,
+      groups: useEditorStore.getState().groups,
     };
     undoStack.current.push(current);
 
@@ -90,6 +102,8 @@ export function useUndoRedo() {
       machines: next.machines,
       connections: next.connections,
       splitters: next.splitters,
+      beacons: next.beacons,
+      groups: next.groups,
       savedAt: new Date().toISOString(),
     });
     setTimeout(() => { isApplying.current = false; }, 0);

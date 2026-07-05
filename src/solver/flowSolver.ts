@@ -3,7 +3,7 @@
 
 import type { FactorioData, Recipe, Item } from '../data/types';
 import type { Connection } from '../types/connections';
-import type { PlacedMachine, PlacedSplitter } from '../store/editorStore';
+import type { PlacedMachine, PlacedSplitter, PlacedBeacon } from '../store/editorStore';
 import { sumModuleEffects, calculateEffectiveSpeed, calculateEffectiveProductivity, calculateEffectivePower } from './moduleEffect';
 
 export interface MachineFlowResult {
@@ -27,8 +27,14 @@ export interface FlowResult {
   machines: Record<string, MachineFlowResult>;
   connections: Record<string, ConnectionFlowResult>;
   totalPower: number;      // total kW
+  totalPollution?: number; // total pollution/m
+  totalUtilization?: number; // average utilization 0-1
   warnings: string[];
 }
+
+// Canvas pixel sizes (must match FactoryCanvas.tsx)
+const MACHINE_SIZE_PX = 60;
+const BEACON_SIZE_PX = 50;
 
 // Build a graph representation from the factory state
 interface GraphNode {
@@ -58,6 +64,7 @@ export function solveFlow(
   connections: Connection[],
   data: FactorioData,
   splitters: PlacedSplitter[] = [],
+  beacons: PlacedBeacon[] = [],
 ): FlowResult {
   const warnings: string[] = [];
   const machineResults: Record<string, MachineFlowResult> = {};
@@ -84,6 +91,34 @@ export function solveFlow(
         const effects = sumModuleEffects(moduleItems);
         const effectiveSpeedMul = calculateEffectiveSpeed(effects, undefined, undefined, 0);
         speed = speed * effectiveSpeedMul;
+      }
+
+      // Apply beacon effects — find all beacons within range of this machine
+      const BEACON_TILE_TO_PX = 20; // 1 tile ≈ 20px (machine is 60px = 3 tiles)
+      const machineCx = m.x + MACHINE_SIZE_PX / 2;
+      const machineCy = m.y + MACHINE_SIZE_PX / 2;
+      let beaconSpeedBonus = 0;
+      let beaconConsumptionBonus = 0;
+      let beaconPollutionBonus = 0;
+      for (const b of beacons) {
+        const beaconItem = data.items.find((i) => i.id === b.beaconId);
+        const beaconProps = beaconItem?.beacon;
+        if (!beaconProps || !b.moduleId) continue;
+        const beaconModule = data.items.find((i) => i.id === b.moduleId);
+        if (!beaconModule?.module) continue;
+        const beaconCx = b.x + BEACON_SIZE_PX / 2;
+        const beaconCy = b.y + BEACON_SIZE_PX / 2;
+        const dist = Math.sqrt((machineCx - beaconCx) ** 2 + (machineCy - beaconCy) ** 2);
+        const rangePx = beaconProps.range * BEACON_TILE_TO_PX;
+        if (dist <= rangePx) {
+          beaconSpeedBonus += (beaconModule.module.speed ?? 0) * beaconProps.effectivity;
+          beaconConsumptionBonus += (beaconModule.module.consumption ?? 0) * beaconProps.effectivity;
+          beaconPollutionBonus += (beaconModule.module.pollution ?? 0) * beaconProps.effectivity;
+        }
+      }
+
+      if (beaconSpeedBonus !== 0) {
+        speed = speed * (1 + beaconSpeedBonus);
       }
 
       // Productivity bonus increases output quantity
@@ -277,6 +312,9 @@ export function solveFlow(
 
   // Compute final results
   let totalPower = 0;
+  let totalPollution = 0;
+  let utilSum = 0;
+  let utilCount = 0;
 
   for (const node of nodes.values()) {
     const util = utilization.get(node.id) ?? 0;
@@ -307,9 +345,49 @@ export function solveFlow(
         const effects = sumModuleEffects(moduleItems);
         basePower = calculateEffectivePower(basePower, effects, undefined, undefined, 0);
       }
+
+      // Apply beacon power consumption bonus
+      const machineCx = node.machine.x + MACHINE_SIZE_PX / 2;
+      const machineCy = node.machine.y + MACHINE_SIZE_PX / 2;
+      let beaconConsumptionBonus = 0;
+      for (const b of beacons) {
+        const beaconItem = data.items.find((i) => i.id === b.beaconId);
+        const beaconProps = beaconItem?.beacon;
+        if (!beaconProps || !b.moduleId) continue;
+        const beaconModule = data.items.find((i) => i.id === b.moduleId);
+        if (!beaconModule?.module) continue;
+        const beaconCx = b.x + BEACON_SIZE_PX / 2;
+        const beaconCy = b.y + BEACON_SIZE_PX / 2;
+        const dist = Math.sqrt((machineCx - beaconCx) ** 2 + (machineCy - beaconCy) ** 2);
+        const rangePx = beaconProps.range * 20;
+        if (dist <= rangePx) {
+          beaconConsumptionBonus += (beaconModule.module.consumption ?? 0) * beaconProps.effectivity;
+        }
+      }
+      basePower = basePower * (1 + beaconConsumptionBonus);
+
       power = basePower * util;
     }
     totalPower += power;
+
+    // Pollution = base pollution * utilization * module pollution modifier
+    if (machineProps?.pollution && recipe) {
+      let basePollution = machineProps.pollution;
+      if (node.machine.modules && node.machine.modules.length > 0) {
+        const moduleItems = node.machine.modules
+          .map((modId) => data.items.find((i) => i.id === modId))
+          .filter(Boolean) as Item[];
+        const effects = sumModuleEffects(moduleItems);
+        basePollution = basePollution * (1 + effects.pollutionBonus);
+      }
+      totalPollution += basePollution * util;
+    }
+
+    // Track utilization for average
+    if (recipe) {
+      utilSum += util;
+      utilCount++;
+    }
 
     machineResults[node.id] = {
       machineId: node.id,
@@ -323,6 +401,14 @@ export function solveFlow(
     // Check for machines with no recipe assigned
     if (!recipe && node.machineItem?.machine) {
       warnings.push(`${node.machineItem.name} has no recipe assigned`);
+    }
+  }
+
+  // Add beacon power usage (beacons draw power regardless of utilization)
+  for (const b of beacons) {
+    const beaconItem = data.items.find((i) => i.id === b.beaconId);
+    if (beaconItem?.beacon?.usage) {
+      totalPower += beaconItem.beacon.usage;
     }
   }
 
@@ -399,6 +485,8 @@ export function solveFlow(
     machines: machineResults,
     connections: connectionResults,
     totalPower,
+    totalPollution,
+    totalUtilization: utilCount > 0 ? utilSum / utilCount : 0,
     warnings,
   };
 }
