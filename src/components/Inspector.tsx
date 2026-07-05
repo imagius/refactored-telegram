@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { isMachine } from '../data/types';
 import { IconSprite } from './IconSprite';
-import type { Recipe } from '../data/types';
+import type { Recipe, Item } from '../data/types';
 
 export function Inspector() {
   const machine = useEditorStore((s) => s.machines.find((m) => m.id === s.selectedId));
@@ -13,6 +13,7 @@ export function Inspector() {
   const setRecipe = useEditorStore((s) => s.setRecipe);
   const removeMachine = useEditorStore((s) => s.removeMachine);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
+  const setModules = useEditorStore((s) => s.setModules);
   const [recipeSearch, setRecipeSearch] = useState('');
 
   const machineItem = machine ? getMachineItem(machine.machineId) : undefined;
@@ -127,6 +128,85 @@ export function Inspector() {
                   <p className="px-2 py-2 text-sm text-gray-500">No recipes found</p>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Module slots */}
+      {machineProps?.modules && machineProps.modules > 0 && (
+        <div className="mb-4">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Modules ({machineProps.modules} slots)</h3>
+          <div className="space-y-1.5">
+            {Array.from({ length: machineProps.modules }).map((_, slotIdx) => {
+              const currentModId = machine.modules?.[slotIdx];
+              return (
+                <select
+                  key={slotIdx}
+                  value={currentModId ?? ''}
+                  onChange={(e) => {
+                    const newModules = [...(machine.modules ?? [])];
+                    while (newModules.length < machineProps.modules!) newModules.push('');
+                    if (e.target.value) {
+                      newModules[slotIdx] = e.target.value;
+                    } else {
+                      newModules[slotIdx] = '';
+                    }
+                    setModules(machine.id, newModules.filter((m) => m !== ''));
+                  }}
+                  className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
+                >
+                  <option value="">Empty</option>
+                  {data?.items
+                    .filter((i) => i.module !== undefined)
+                    .map((mod) => (
+                      <option key={mod.id} value={mod.id}>
+                        {mod.name}
+                        {mod.module?.speed ? ` (+${Math.round(mod.module.speed * 100)}% speed)` : ''}
+                        {mod.module?.productivity ? ` (+${Math.round(mod.module.productivity * 100)}% prod)` : ''}
+                      </option>
+                    ))}
+                </select>
+              );
+            })}
+          </div>
+          {/* Show active effects summary */}
+          {machine.modules && machine.modules.length > 0 && (
+            <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
+              {(() => {
+                const moduleItems = machine.modules!
+                  .map((modId) => data?.items.find((i) => i.id === modId))
+                  .filter(Boolean) as Item[];
+                const speedBonus = moduleItems.reduce((sum, m) => sum + (m.module?.speed ?? 0), 0);
+                const prodBonus = moduleItems.reduce((sum, m) => sum + (m.module?.productivity ?? 0), 0);
+                const powerBonus = moduleItems.reduce((sum, m) => sum + (m.module?.consumption ?? 0), 0);
+                return (
+                  <div className="space-y-0.5">
+                    {speedBonus !== 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Speed:</span>
+                        <span className={speedBonus > 0 ? 'text-factorio-green' : 'text-factorio-red'}>
+                          {speedBonus > 0 ? '+' : ''}{Math.round(speedBonus * 100)}%
+                        </span>
+                      </div>
+                    )}
+                    {prodBonus !== 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Productivity:</span>
+                        <span className="text-factorio-green">+{Math.round(prodBonus * 100)}%</span>
+                      </div>
+                    )}
+                    {powerBonus !== 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Power:</span>
+                        <span className={powerBonus > 0 ? 'text-factorio-red' : 'text-factorio-green'}>
+                          {powerBonus > 0 ? '+' : ''}{Math.round(powerBonus * 100)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

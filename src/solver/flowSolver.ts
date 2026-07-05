@@ -4,6 +4,7 @@
 import type { FactorioData, Recipe, Item } from '../data/types';
 import type { Connection } from '../types/connections';
 import type { PlacedMachine, PlacedSplitter } from '../store/editorStore';
+import { sumModuleEffects, calculateEffectiveSpeed, calculateEffectiveProductivity, calculateEffectivePower } from './moduleEffect';
 
 export interface MachineFlowResult {
   machineId: string;       // instance id
@@ -72,12 +73,34 @@ export function solveFlow(
     const requiredInputs = new Map<string, number>();
 
     if (recipe && machineItem?.machine) {
-      const speed = machineItem.machine.speed;
-      // Output rate = (output qty / craft time) * crafting speed
-      for (const [itemId, qty] of Object.entries(recipe.out)) {
-        maxOutputs.set(itemId, (qty / recipe.time) * speed);
+      // Base speed from machine
+      let speed = machineItem.machine.speed;
+
+      // Apply module effects if machine has modules
+      if (m.modules && m.modules.length > 0) {
+        const moduleItems = m.modules
+          .map((modId) => data.items.find((i) => i.id === modId))
+          .filter(Boolean) as Item[];
+        const effects = sumModuleEffects(moduleItems);
+        const effectiveSpeedMul = calculateEffectiveSpeed(effects, undefined, undefined, 0);
+        speed = speed * effectiveSpeedMul;
       }
-      // Input rate = (input qty / craft time) * crafting speed
+
+      // Productivity bonus increases output quantity
+      let productivityMul = 1.0;
+      if (m.modules && m.modules.length > 0) {
+        const moduleItems = m.modules
+          .map((modId) => data.items.find((i) => i.id === modId))
+          .filter(Boolean) as Item[];
+        const effects = sumModuleEffects(moduleItems);
+        productivityMul = calculateEffectiveProductivity(effects);
+      }
+
+      // Output rate = (output qty / craft time) * crafting speed * productivity
+      for (const [itemId, qty] of Object.entries(recipe.out)) {
+        maxOutputs.set(itemId, (qty / recipe.time) * speed * productivityMul);
+      }
+      // Input rate = (input qty / craft time) * crafting speed (productivity doesn't increase input consumption)
       for (const [itemId, qty] of Object.entries(recipe.in)) {
         requiredInputs.set(itemId, (qty / recipe.time) * speed);
       }
@@ -272,8 +295,20 @@ export function solveFlow(
       }
     }
 
-    // Power = base usage * utilization (simplified: no recipe = 0 power)
-    const power = machineProps?.usage && recipe ? machineProps.usage * util : 0;
+    // Power = base usage * utilization * module consumption modifier
+    let power = 0;
+    if (machineProps?.usage && recipe) {
+      let basePower = machineProps.usage;
+      // Apply module power consumption effects
+      if (node.machine.modules && node.machine.modules.length > 0) {
+        const moduleItems = node.machine.modules
+          .map((modId) => data.items.find((i) => i.id === modId))
+          .filter(Boolean) as Item[];
+        const effects = sumModuleEffects(moduleItems);
+        basePower = calculateEffectivePower(basePower, effects, undefined, undefined, 0);
+      }
+      power = basePower * util;
+    }
     totalPower += power;
 
     machineResults[node.id] = {
