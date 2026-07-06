@@ -3,6 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { isMachine } from '../data/types';
 import { IconSprite } from './IconSprite';
 import type { Recipe, Item } from '../data/types';
+import { titleCaseName } from '../utils/titleCase';
 
 export function Inspector() {
   const machine = useEditorStore((s) => s.machines.find((m) => m.id === s.selectedId));
@@ -27,7 +28,7 @@ export function Inspector() {
   const filteredRecipes = useMemo(() => {
     if (!recipeSearch) return recipesForMachine;
     const q = recipeSearch.toLowerCase();
-    return recipesForMachine.filter((r) => r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
+    return recipesForMachine.filter((r) => titleCaseName(r.name).toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
   }, [recipesForMachine, recipeSearch]);
 
   if (!machine || !machineItem) {
@@ -54,7 +55,7 @@ export function Inspector() {
       <div className="flex items-center gap-2 mb-3">
         {icon && <IconSprite icon={icon} size={32} />}
         <div>
-          <div className="text-sm font-semibold text-factorio-text-bright">{machineItem.name}</div>
+          <div className="text-sm font-semibold text-factorio-text-bright">{titleCaseName(machineItem.name)}</div>
           <div className="text-xs text-gray-500">{machineItem.id}</div>
         </div>
       </div>
@@ -126,7 +127,7 @@ export function Inspector() {
                       className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-factorio-border transition-colors"
                     >
                       {rIcon && <IconSprite icon={rIcon} size={20} />}
-                      <span className="text-factorio-text truncate">{r.name}</span>
+                      <span className="text-factorio-text truncate">{titleCaseName(r.name)}</span>
                     </button>
                   );
                 })}
@@ -167,7 +168,7 @@ export function Inspector() {
                     .filter((i) => i.module !== undefined)
                     .map((mod) => (
                       <option key={mod.id} value={mod.id}>
-                        {mod.name}
+                        {titleCaseName(mod.name)}
                         {mod.module?.speed ? ` (+${Math.round(mod.module.speed * 100)}% speed)` : ''}
                         {mod.module?.productivity ? ` (+${Math.round(mod.module.productivity * 100)}% prod)` : ''}
                       </option>
@@ -277,11 +278,11 @@ function ConnectionInspector({ connId }: { connId: string }) {
       <div className="mb-3 space-y-1 text-xs">
         <div className="flex justify-between">
           <span className="text-gray-400">From:</span>
-          <span className="text-factorio-text-bright">{fromItem?.name ?? conn.fromMachineId}</span>
+          <span className="text-factorio-text-bright">{fromItem ? titleCaseName(fromItem.name) : conn.fromMachineId}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">To:</span>
-          <span className="text-factorio-text-bright">{toItem?.name ?? conn.toMachineId}</span>
+          <span className="text-factorio-text-bright">{toItem ? titleCaseName(toItem.name) : conn.toMachineId}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Type:</span>
@@ -305,7 +306,7 @@ function ConnectionInspector({ connId }: { connId: string }) {
       >
         {belts.map((belt) => (
           <option key={belt.id} value={belt.id}>
-            {belt.name} ({belt.belt?.speed} items/s)
+            {titleCaseName(belt.name)} ({belt.belt?.speed} items/s)
           </option>
         ))}
       </select>
@@ -342,7 +343,7 @@ function RecipeDisplay({ recipe, onClear }: { recipe: Recipe; onClear: () => voi
     <div className="rounded border border-factorio-border bg-factorio-bg p-2">
       <div className="flex items-center gap-2 mb-2">
         {recipeIcon && <IconSprite icon={recipeIcon} size={24} />}
-        <span className="text-sm font-semibold text-factorio-text-bright">{recipe.name}</span>
+        <span className="text-sm font-semibold text-factorio-text-bright">{titleCaseName(recipe.name)}</span>
       </div>
 
       <div className="text-xs space-y-2">
@@ -357,7 +358,7 @@ function RecipeDisplay({ recipe, onClear }: { recipe: Recipe; onClear: () => voi
                 return (
                   <div key={id} className="flex items-center gap-1 rounded bg-factorio-panel px-1.5 py-0.5">
                     {icon && <IconSprite icon={icon} size={16} />}
-                    <span className="text-factorio-text">{qty}x {item?.name || id}</span>
+                    <span className="text-factorio-text">{qty}x {item ? titleCaseName(item.name) : id}</span>
                   </div>
                 );
               })}
@@ -376,7 +377,7 @@ function RecipeDisplay({ recipe, onClear }: { recipe: Recipe; onClear: () => voi
                 return (
                   <div key={id} className="flex items-center gap-1 rounded bg-factorio-panel px-1.5 py-0.5">
                     {icon && <IconSprite icon={icon} size={16} />}
-                    <span className="text-factorio-text">{qty}x {item?.name || id}</span>
+                    <span className="text-factorio-text">{qty}x {item ? titleCaseName(item.name) : id}</span>
                   </div>
                 );
               })}

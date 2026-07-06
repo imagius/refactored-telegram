@@ -5,6 +5,7 @@ import { useEditorStore, type PlacedMachine, type PlacedSplitter, type PlacedGro
 import { getPortPosition, type ConnectionSide } from '../types/connections';
 import { useFlowSolver } from '../hooks/useFlowSolver';
 import { useIconImage } from '../hooks/useImage';
+import { titleCaseName } from '../utils/titleCase';
 
 const MACHINE_SIZE = 60;
 const PORT_RADIUS = 5;
@@ -94,8 +95,8 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
 
   const isSelected = selectedId === machine.id;
   const isInMultiSelect = selectedIds.includes(machine.id);
-  const machineName = machineItem?.name || machine.machineId;
-  const displayName = recipe?.name || machineName;
+  const machineName = machineItem ? titleCaseName(machineItem.name) : machine.machineId;
+  const displayName = recipe ? titleCaseName(recipe.name) : machineName;
   const label = displayName.length > 12 ? displayName.substring(0, 10) + '...' : displayName;
 
   // Flow data for utilization bar

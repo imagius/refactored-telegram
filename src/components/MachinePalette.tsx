@@ -3,6 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { isMachine, isBelt, isBeacon } from '../data/types';
 import { IconSprite } from './IconSprite';
 import type { Item } from '../data/types';
+import { titleCaseName } from '../utils/titleCase';
 
 export function MachinePalette() {
   const data = useEditorStore((s) => s.data);
@@ -30,7 +31,7 @@ export function MachinePalette() {
   const filteredMachines = useMemo(() => {
     if (!search) return machines;
     const q = search.toLowerCase();
-    return machines.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+    return machines.filter((m) => titleCaseName(m.name).toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
   }, [machines, search]);
 
   const getIcon = (id: string) => data?.icons.find((i) => i.id === id);
@@ -49,7 +50,7 @@ export function MachinePalette() {
         }`}
       >
         {icon && <IconSprite icon={icon} size={24} />}
-        <span className="text-factorio-text truncate">{item.name}</span>
+        <span className="text-factorio-text truncate">{titleCaseName(item.name)}</span>
       </button>
     );
   };
@@ -132,7 +133,7 @@ export function MachinePalette() {
                   }`}
                 >
                   {icon && <IconSprite icon={icon} size={24} />}
-                  <span className="text-factorio-text truncate">{item.name}</span>
+                  <span className="text-factorio-text truncate">{titleCaseName(item.name)}</span>
                 </button>
               );
             })}
