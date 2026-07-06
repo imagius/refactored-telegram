@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Stage, Layer, Rect, Text, Group, Circle, Arrow } from 'react-konva';
+import { Stage, Layer, Rect, Text, Group, Circle, Arrow, Image as KonvaImage } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore, type PlacedMachine, type PlacedSplitter, type PlacedGroup } from '../store/editorStore';
 import { getPortPosition, type ConnectionSide } from '../types/connections';
 import { useFlowSolver } from '../hooks/useFlowSolver';
+import { useIconImage } from '../hooks/useImage';
 
 const MACHINE_SIZE = 60;
 const PORT_RADIUS = 5;
@@ -82,6 +83,14 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
   const selectMachine = useEditorStore((s) => s.selectMachine);
   const moveMachine = useEditorStore((s) => s.moveMachine);
   const rotateMachine = useEditorStore((s) => s.rotateMachine);
+  const data = useEditorStore((s) => s.data);
+  const dataVersion = useEditorStore((s) => s.dataVersion);
+
+  // Look up the icon: prefer recipe icon if recipe is set, otherwise machine's own icon
+  const iconId = recipe?.id ?? machine.machineId;
+  const icon = data?.icons.find((i) => i.id === iconId);
+  const iconsPath = data ? `/data/${dataVersion}/icons.webp` : null;
+  const iconImage = useIconImage(iconsPath, icon);
 
   const isSelected = selectedId === machine.id;
   const isInMultiSelect = selectedIds.includes(machine.id);
@@ -133,15 +142,26 @@ function MachineNode({ machine, flowResult }: { machine: PlacedMachine; flowResu
         shadowOffsetY={2}
         shadowOpacity={0.3}
       />
+      {iconImage && (
+        <KonvaImage
+          image={iconImage}
+          x={4}
+          y={4}
+          width={MACHINE_SIZE - 8}
+          height={MACHINE_SIZE - 8}
+          listening={false}
+        />
+      )}
       <Text
         text={label}
-        fontSize={9}
+        fontSize={8}
         fill="#c4c4c4"
         width={MACHINE_SIZE}
         align="center"
-        y={MACHINE_SIZE / 2 - 6}
+        y={MACHINE_SIZE + 2}
         wrap="none"
         ellipsis
+        listening={false}
       />
       {isSelected && (
         <Text
