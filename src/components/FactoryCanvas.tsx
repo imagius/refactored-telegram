@@ -522,6 +522,8 @@ export function FactoryCanvas() {
   const splitters = useEditorStore((s) => s.splitters);
   const beacons = useEditorStore((s) => s.beacons);
   const groups = useEditorStore((s) => s.groups);
+  const gridSnap = useEditorStore((s) => s.gridSnap);
+  const gridSize = useEditorStore((s) => s.gridSize);
   const pendingMachineId = useEditorStore((s) => s.pendingMachineId);
   const pendingBeaconId = useEditorStore((s) => s.pendingBeaconId);
   const pendingConnection = useEditorStore((s) => s.pendingConnection);
@@ -606,8 +608,101 @@ export function FactoryCanvas() {
 
   const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    const oldScale = scale;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
     const delta = e.evt.deltaY > 0 ? 0.9 : 1.1;
-    setScale((s) => Math.max(0.2, Math.min(3, s * delta)));
+    const newScale = Math.max(0.2, Math.min(3, oldScale * delta));
+
+    // Zoom toward the cursor position
+    const mousePointTo = {
+      x: (pointer.x - pos.x) / oldScale,
+      y: (pointer.y - pos.y) / oldScale,
+    };
+
+    setScale(newScale);
+    setPos({
+      x: pointer.x - mousePointTo.x * newScale,
+      y: pointer.y - mousePointTo.y * newScale,
+    });
+  };
+
+  // Middle mouse button panning
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Middle mouse button (button === 1) starts panning
+    if (e.evt.button === 1) {
+      e.evt.preventDefault();
+      isPanning.current = true;
+      panStart.current = { x: e.evt.clientX, y: e.evt.clientY };
+      const container = e.target.getStage()?.container();
+      if (container) container.style.cursor = 'grabbing';
+      return;
+    }
+
+    // Left mouse button (button === 0) — start box selection on empty canvas
+    const stage = e.target.getStage();
+    if (!stage) return;
+    if (e.target === stage && !pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType) {
+      const pointerPos = stage.getPointerPosition();
+      if (pointerPos) {
+        const worldX = (pointerPos.x - pos.x) / scale;
+        const worldY = (pointerPos.y - pos.y) / scale;
+        setBoxSelect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
+      }
+    }
+  };
+
+  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Handle middle-mouse panning
+    if (isPanning.current) {
+      const dx = e.evt.clientX - panStart.current.x;
+      const dy = e.evt.clientY - panStart.current.y;
+      setPos((p) => ({ x: p.x + dx, y: p.y + dy }));
+      panStart.current = { x: e.evt.clientX, y: e.evt.clientY };
+      return;
+    }
+
+    // Handle box selection
+    if (!boxSelect) return;
+    const stage = e.target.getStage();
+    if (!stage) return;
+    const pointerPos = stage.getPointerPosition();
+    if (pointerPos) {
+      const worldX = (pointerPos.x - pos.x) / scale;
+      const worldY = (pointerPos.y - pos.y) / scale;
+      setBoxSelect({ ...boxSelect, x2: worldX, y2: worldY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isPanning.current) {
+      isPanning.current = false;
+      return;
+    }
+    if (boxSelect) {
+      const minX = Math.min(boxSelect.x1, boxSelect.x2);
+      const maxX = Math.max(boxSelect.x1, boxSelect.x2);
+      const minY = Math.min(boxSelect.y1, boxSelect.y2);
+      const maxY = Math.max(boxSelect.y1, boxSelect.y2);
+
+      const selected = machines
+        .filter((m) => m.x + MACHINE_SIZE >= minX && m.x <= maxX && m.y + MACHINE_SIZE >= minY && m.y <= maxY)
+        .map((m) => m.id);
+
+      if (selected.length > 0) {
+        selectMultiple(selected);
+      } else {
+        selectMachine(null);
+      }
+      setBoxSelect(null);
+    }
   };
 
   // Zoom to fit all content
@@ -657,6 +752,8 @@ export function FactoryCanvas() {
     <div
       ref={containerRef}
       className="absolute inset-0"
+      onAuxClick={(e) => e.preventDefault()}
+      onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
       onDragOver={(e) => {
         // Allow drop
         if (e.dataTransfer.types.includes('application/x-factorio-item') ||
@@ -694,54 +791,10 @@ export function FactoryCanvas() {
         height={size.height}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        draggable={!pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType && !boxSelect}
-        onDragEnd={(e) => {
-          setPos({ x: e.target.x(), y: e.target.y() });
-        }}
-        onMouseDown={(e) => {
-          // Start box selection on empty canvas when no pending action
-          const stage = e.target.getStage();
-          if (!stage) return;
-          if (e.target === stage && !pendingMachineId && !pendingBeaconId && !pendingConnection && !pendingSplitterType) {
-            const pointerPos = stage.getPointerPosition();
-            if (pointerPos) {
-              const worldX = (pointerPos.x - pos.x) / scale;
-              const worldY = (pointerPos.y - pos.y) / scale;
-              setBoxSelect({ x1: worldX, y1: worldY, x2: worldX, y2: worldY });
-            }
-          }
-        }}
-        onMouseMove={(e) => {
-          if (!boxSelect) return;
-          const stage = e.target.getStage();
-          if (!stage) return;
-          const pointerPos = stage.getPointerPosition();
-          if (pointerPos) {
-            const worldX = (pointerPos.x - pos.x) / scale;
-            const worldY = (pointerPos.y - pos.y) / scale;
-            setBoxSelect({ ...boxSelect, x2: worldX, y2: worldY });
-          }
-        }}
-        onMouseUp={() => {
-          if (boxSelect) {
-            // Select all machines within the box
-            const minX = Math.min(boxSelect.x1, boxSelect.x2);
-            const maxX = Math.max(boxSelect.x1, boxSelect.x2);
-            const minY = Math.min(boxSelect.y1, boxSelect.y2);
-            const maxY = Math.max(boxSelect.y1, boxSelect.y2);
-
-            const selected = machines
-              .filter((m) => m.x + MACHINE_SIZE >= minX && m.x <= maxX && m.y + MACHINE_SIZE >= minY && m.y <= maxY)
-              .map((m) => m.id);
-
-            if (selected.length > 0) {
-              selectMultiple(selected);
-            } else {
-              selectMachine(null);
-            }
-            setBoxSelect(null);
-          }
-        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onContextMenu={(e) => { e.evt.preventDefault(); }}
       >
         <Layer x={pos.x} y={pos.y} scaleX={scale} scaleY={scale}>
           {/* Grid background */}
@@ -753,6 +806,34 @@ export function FactoryCanvas() {
             fill="#111122"
             listening={false}
           />
+          {/* Visible grid when grid snap is on */}
+          {gridSnap && (
+            <Group listening={false}>
+              {Array.from({ length: 101 }).map((_, i) => {
+                const linePos = -500 + i * gridSize;
+                return (
+                  <Group key={i}>
+                    {/* Vertical line */}
+                    <Rect
+                      x={linePos}
+                      y={-500}
+                      width={1}
+                      height={1000}
+                      fill="#1a1a3a"
+                    />
+                    {/* Horizontal line */}
+                    <Rect
+                      x={-500}
+                      y={linePos}
+                      width={1000}
+                      height={1}
+                      fill="#1a1a3a"
+                    />
+                  </Group>
+                );
+              })}
+            </Group>
+          )}
 
       {/* Splitter nodes */}
       {splitters.map((s) => (
