@@ -654,7 +654,41 @@ export function FactoryCanvas() {
   }, []);
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div
+      ref={containerRef}
+      className="absolute inset-0"
+      onDragOver={(e) => {
+        // Allow drop
+        if (e.dataTransfer.types.includes('application/x-factorio-item') ||
+            e.dataTransfer.types.includes('application/x-factorio-beacon') ||
+            e.dataTransfer.types.includes('application/x-factorio-splitter')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = (screenX - pos.x) / scale;
+        const worldY = (screenY - pos.y) / scale;
+
+        const itemId = e.dataTransfer.getData('application/x-factorio-item');
+        const beaconId = e.dataTransfer.getData('application/x-factorio-beacon');
+        const splitterType = e.dataTransfer.getData('application/x-factorio-splitter');
+
+        if (itemId) {
+          addMachine(itemId, worldX - MACHINE_SIZE / 2, worldY - MACHINE_SIZE / 2);
+        } else if (beaconId) {
+          addBeacon(beaconId, worldX - BEACON_SIZE / 2, worldY - BEACON_SIZE / 2);
+        } else if (splitterType) {
+          addSplitter(splitterType as 'splitter' | 'merger', worldX - 30, worldY - 15);
+        }
+      }}
+    >
       <Stage
         width={size.width}
         height={size.height}

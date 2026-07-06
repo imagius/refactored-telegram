@@ -42,8 +42,13 @@ export function MachinePalette() {
     return (
       <button
         key={item.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('application/x-factorio-item', item.id);
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
         onClick={() => setPendingMachine(isSelected ? null : item.id)}
-        className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+        className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors cursor-grab active:cursor-grabbing ${
           isSelected
             ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
             : 'hover:bg-factorio-border border-l-2 border-transparent'
@@ -57,7 +62,7 @@ export function MachinePalette() {
 
   return (
     <div className="p-2">
-      <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Palette</h2>
+      <h2 className="mb-2 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Machine Library</h2>
 
       <input
         type="text"
@@ -81,11 +86,16 @@ export function MachinePalette() {
           <h3 className="mb-1 mt-2 text-xs font-semibold uppercase text-gray-400">Logistics</h3>
           <div className="mb-3">
             <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/x-factorio-splitter', 'splitter');
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
               onClick={() => {
                 setPendingMachine(null);
                 setPendingSplitter(pendingSplitterType === 'splitter' ? null : 'splitter');
               }}
-              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors cursor-grab active:cursor-grabbing ${
                 pendingSplitterType === 'splitter'
                   ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
                   : 'hover:bg-factorio-border border-l-2 border-transparent'
@@ -95,11 +105,16 @@ export function MachinePalette() {
               <span className="text-factorio-text">Splitter</span>
             </button>
             <button
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('application/x-factorio-splitter', 'merger');
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
               onClick={() => {
                 setPendingMachine(null);
                 setPendingSplitter(pendingSplitterType === 'merger' ? null : 'merger');
               }}
-              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors cursor-grab active:cursor-grabbing ${
                 pendingSplitterType === 'merger'
                   ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
                   : 'hover:bg-factorio-border border-l-2 border-transparent'
@@ -125,8 +140,13 @@ export function MachinePalette() {
               return (
                 <button
                   key={item.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-factorio-beacon', item.id);
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
                   onClick={() => setPendingBeacon(isSelected ? null : item.id)}
-                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors ${
+                  className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors cursor-grab active:cursor-grabbing ${
                     isSelected
                       ? 'bg-factorio-accent/30 border-l-2 border-factorio-accent'
                       : 'hover:bg-factorio-border border-l-2 border-transparent'
