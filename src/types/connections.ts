@@ -27,6 +27,7 @@ export const PORT_OFFSETS: Record<ConnectionSide, { x: number; y: number }> = {
 export const PORT_COLORS = {
   output: '#4ade80',
   input: '#f87171',
+  fluid: '#60a5fa',   // blue for pipe/fluid connections
 };
 
 // Get absolute port position given a machine's canvas position

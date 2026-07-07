@@ -32,6 +32,11 @@ export function Inspector() {
   }, [recipesForMachine, recipeSearch]);
 
   if (!machine || !machineItem) {
+    // Check if a beacon is selected
+    const selectedBeacon = useEditorStore.getState().beacons.find((b) => b.id === useEditorStore.getState().selectedId);
+    if (selectedBeacon) {
+      return <BeaconInspector beacon={selectedBeacon} />;
+    }
     // Show connection inspector if a connection is selected
     if (selectedConnection) {
       return <ConnectionInspector connId={selectedConnection.id} />;
@@ -251,6 +256,117 @@ export function Inspector() {
   );
 }
 
+function BeaconInspector({ beacon }: { beacon: import('../store/editorStore').PlacedBeacon }) {
+  const data = useEditorStore((s) => s.data);
+  const setBeaconModule = useEditorStore((s) => s.setBeaconModule);
+  const removeBeacon = useEditorStore((s) => s.removeBeacon);
+  const getIcon = (id: string) => data?.icons.find((i) => i.id === id);
+
+  const beaconItem = data?.items.find((i) => i.id === beacon.beaconId);
+  const beaconProps = beaconItem?.beacon;
+  const icon = getIcon(beacon.beaconId);
+  const moduleItem = beacon.moduleId ? data?.items.find((m) => m.id === beacon.moduleId) : undefined;
+  const modules = data?.items.filter((i) => i.module !== undefined) ?? [];
+
+  return (
+    <div className="p-3">
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Beacon</h2>
+
+      {/* Beacon header */}
+      <div className="flex items-center gap-2 mb-3">
+        {icon && <IconSprite icon={icon} size={32} />}
+        <div>
+          <div className="text-sm font-semibold text-factorio-text-bright">{beaconItem ? titleCaseName(beaconItem.name) : beacon.beaconId}</div>
+          <div className="text-xs text-gray-500">{beacon.beaconId}</div>
+        </div>
+      </div>
+
+      {/* Beacon stats */}
+      {beaconProps && (
+        <div className="mb-4 space-y-1 text-xs">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Effectivity:</span>
+            <span className="text-factorio-text-bright">{beaconProps.effectivity}x</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Range:</span>
+            <span className="text-factorio-text-bright">{beaconProps.range} tiles</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Module Slots:</span>
+            <span className="text-factorio-text-bright">{beaconProps.modules}</span>
+          </div>
+          {beaconProps.usage && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Power:</span>
+              <span className="text-factorio-text-bright">{(beaconProps.usage / 1000).toFixed(2)} MW</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Module selector */}
+      <div className="mb-4">
+        <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Module</h3>
+        <select
+          value={beacon.moduleId ?? ''}
+          onChange={(e) => setBeaconModule(beacon.id, e.target.value || undefined)}
+          className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
+        >
+          <option value="">No Module</option>
+          {modules.map((mod) => (
+            <option key={mod.id} value={mod.id}>
+              {titleCaseName(mod.name)}
+              {mod.module?.speed ? ` (+${Math.round(mod.module.speed * 100)}% speed)` : ''}
+              {mod.module?.productivity ? ` (+${Math.round(mod.module.productivity * 100)}% prod)` : ''}
+            </option>
+          ))}
+        </select>
+
+        {/* Active module effects */}
+        {moduleItem?.module && (
+          <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
+            <div className="space-y-0.5">
+              {moduleItem.module.speed && moduleItem.module.speed !== 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Speed bonus:</span>
+                  <span className="text-factorio-green">
+                    +{Math.round(moduleItem.module.speed * beaconProps!.effectivity * 100)}% effective
+                  </span>
+                </div>
+              )}
+              {moduleItem.module.productivity && moduleItem.module.productivity !== 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Productivity bonus:</span>
+                  <span className="text-factorio-green">
+                    +{Math.round(moduleItem.module.productivity * beaconProps!.effectivity * 100)}% effective
+                  </span>
+                </div>
+              )}
+              {moduleItem.module.consumption && moduleItem.module.consumption !== 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Power cost:</span>
+                  <span className={moduleItem.module.consumption < 0 ? 'text-factorio-green' : 'text-factorio-red'}>
+                    {moduleItem.module.consumption > 0 ? '+' : ''}{Math.round(moduleItem.module.consumption * beaconProps!.effectivity * 100)}% effective
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <button
+        onClick={() => removeBeacon(beacon.id)}
+        className="w-full rounded border border-factorio-red/50 bg-factorio-red/10 px-2 py-1.5 text-xs text-factorio-red hover:bg-factorio-red/20 transition-colors"
+      >
+        🗑 Delete Beacon
+      </button>
+    </div>
+  );
+}
+
 function ConnectionInspector({ connId }: { connId: string }) {
   const conn = useEditorStore((s) => s.connections.find((c) => c.id === connId));
   const data = useEditorStore((s) => s.data);
@@ -269,11 +385,15 @@ function ConnectionInspector({ connId }: { connId: string }) {
     );
   }
 
+  const isPipe = conn.type === 'pipe';
   const belts = data?.items.filter((i) => i.belt !== undefined) ?? [];
+  const pipes = data?.items.filter((i) => i.pipe !== undefined) ?? [];
 
   return (
     <div className="p-3">
-      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">Belt Connection</h2>
+      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-factorio-text-bright">
+        {isPipe ? 'Pipe Connection' : 'Belt Connection'}
+      </h2>
 
       <div className="mb-3 space-y-1 text-xs">
         <div className="flex justify-between">
@@ -286,43 +406,87 @@ function ConnectionInspector({ connId }: { connId: string }) {
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Type:</span>
-          <span className="text-factorio-text-bright capitalize">{conn.type}</span>
+          <span className="text-factorio-text-bright capitalize" style={isPipe ? { color: '#60a5fa' } : undefined}>{conn.type}</span>
         </div>
       </div>
 
       {/* Belt tier selector */}
-      <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Belt Tier</h3>
-      <select
-        value={conn.beltId ?? ''}
-        onChange={(e) => {
-          // Update the connection's belt tier
-          useEditorStore.setState((state) => ({
-            connections: state.connections.map((c) =>
-              c.id === connId ? { ...c, beltId: e.target.value || undefined } : c
-            ),
-          }));
-        }}
-        className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
-      >
-        {belts.map((belt) => (
-          <option key={belt.id} value={belt.id}>
-            {titleCaseName(belt.name)} ({belt.belt?.speed} items/s)
-          </option>
-        ))}
-      </select>
+      {!isPipe && (
+        <>
+          <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Belt Tier</h3>
+          <select
+            value={conn.beltId ?? ''}
+            onChange={(e) => {
+              useEditorStore.setState((state) => ({
+                connections: state.connections.map((c) =>
+                  c.id === connId ? { ...c, beltId: e.target.value || undefined } : c
+                ),
+              }));
+            }}
+            className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
+          >
+            {belts.map((belt) => (
+              <option key={belt.id} value={belt.id}>
+                {titleCaseName(belt.name)} ({belt.belt?.speed} items/s)
+              </option>
+            ))}
+          </select>
 
-      {/* Belt speed info */}
-      {conn.beltId && (() => {
-        const belt = data?.items.find((i) => i.id === conn.beltId);
-        return belt?.belt ? (
-          <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Max throughput:</span>
-              <span className="text-factorio-green">{belt.belt.speed} items/sec</span>
-            </div>
-          </div>
-        ) : null;
-      })()}
+          {/* Belt speed info */}
+          {conn.beltId && (() => {
+            const belt = data?.items.find((i) => i.id === conn.beltId);
+            return belt?.belt ? (
+              <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Max throughput:</span>
+                  <span className="text-factorio-green">{belt.belt.speed} items/sec</span>
+                </div>
+              </div>
+            ) : null;
+          })()}
+        </>
+      )}
+
+      {/* Pipe tier selector */}
+      {isPipe && (
+        <>
+          <h3 className="mb-1.5 text-xs font-semibold uppercase text-gray-400">Pipe Tier</h3>
+          {pipes.length > 0 ? (
+            <select
+              value={conn.pipeId ?? ''}
+              onChange={(e) => {
+                useEditorStore.setState((state) => ({
+                  connections: state.connections.map((c) =>
+                    c.id === connId ? { ...c, pipeId: e.target.value || undefined } : c
+                  ),
+                }));
+              }}
+              className="w-full rounded border border-factorio-border bg-factorio-bg px-2 py-1 text-xs text-factorio-text-bright"
+            >
+              {pipes.map((pipe) => (
+                <option key={pipe.id} value={pipe.id}>
+                  {titleCaseName(pipe.name)} ({pipe.pipe?.speed} fluid/s)
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-gray-500">No pipe items available in dataset</p>
+          )}
+
+          {/* Pipe speed info */}
+          {conn.pipeId && (() => {
+            const pipe = data?.items.find((i) => i.id === conn.pipeId);
+            return pipe?.pipe ? (
+              <div className="mt-2 rounded border border-factorio-border bg-factorio-bg p-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Max throughput:</span>
+                  <span className="text-factorio-blue" style={{ color: '#60a5fa' }}>{pipe.pipe.speed} fluid/sec</span>
+                </div>
+              </div>
+            ) : null;
+          })()}
+        </>
+      )}
 
       <button
         onClick={() => removeConnection(connId)}

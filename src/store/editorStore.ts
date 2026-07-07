@@ -18,6 +18,7 @@ export interface PlacedMachine {
 export interface PendingConnection {
   fromMachineId: string;
   fromSide: ConnectionSide;
+  type: ConnectionType;  // 'belt' or 'pipe' — determined by port clicked + Shift key
 }
 
 // Splitter/merger node
@@ -281,6 +282,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const conn: Connection = {
       id, type, fromMachineId, fromSide, toMachineId, toSide,
       beltId: type === 'belt' ? get().data?.defaults.belt : undefined,
+      pipeId: type === 'pipe' ? get().data?.defaults.pipe : undefined,
     };
     set((state) => ({
       connections: [...state.connections, conn],

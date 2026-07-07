@@ -128,7 +128,8 @@ const MOUSE_SHORTCUTS = [
   { action: 'Left-click + drag machine', desc: 'Move machine', icon: '🖱️' },
   { action: 'Drag from Machine Library', desc: 'Place machine on canvas', icon: '🖱️' },
   { action: 'Click green port → red port', desc: 'Connect with belt', icon: '🔌' },
-  { action: 'Double-click belt', desc: 'Delete belt', icon: '🔌' },
+  { action: 'Shift+Click green/blue port → red/blue port', desc: 'Connect with pipe (fluid)', icon: '💧' },
+  { action: 'Double-click belt/pipe', desc: 'Delete connection', icon: '🔌' },
   { action: 'Scroll wheel', desc: 'Zoom in / out (toward cursor)', icon: '🌀' },
   { action: 'Middle-click + drag', desc: 'Pan canvas', icon: '🖐️' },
 ];
@@ -138,6 +139,7 @@ const KEYBOARD_SHORTCUTS = [
   { keys: 'R', desc: 'Rotate selected machine', combo: false },
   { keys: 'Esc', desc: 'Cancel pending action', combo: false },
   { keys: '?', desc: 'Toggle this help', combo: false },
+  { keys: 'Shift + Click port', desc: 'Create pipe (fluid) connection', combo: true },
   { keys: 'Ctrl + D', desc: 'Duplicate machine (keeps recipe + modules)', combo: true },
   { keys: 'Ctrl + C', desc: 'Copy selected machine(s)', combo: true },
   { keys: 'Ctrl + V', desc: 'Paste copied machine(s)', combo: true },

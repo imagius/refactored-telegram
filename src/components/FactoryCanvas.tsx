@@ -2,10 +2,11 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Group, Circle, Arrow, Image as KonvaImage } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore, type PlacedMachine, type PlacedSplitter, type PlacedGroup } from '../store/editorStore';
-import { getPortPosition, type ConnectionSide } from '../types/connections';
+import { getPortPosition, type ConnectionSide, PORT_COLORS } from '../types/connections';
 import { useFlowSolver } from '../hooks/useFlowSolver';
 import { useIconImage } from '../hooks/useImage';
 import { titleCaseName } from '../utils/titleCase';
+import { isFluidMachine } from '../utils/machineFlags';
 
 const MACHINE_SIZE = 60;
 const PORT_RADIUS = 5;
@@ -25,18 +26,28 @@ function MachinePorts({ machine }: { machine: PlacedMachine }) {
   const setPendingConnection = useEditorStore((s) => s.setPendingConnection);
   const addConnection = useEditorStore((s) => s.addConnection);
 
-  const handlePortClick = (side: ConnectionSide, isOutput: boolean, e: Konva.KonvaEventObject<MouseEvent>) => {
+  const isFluid = isFluidMachine(machine.machineId);
+
+  const handlePortClick = (side: ConnectionSide, isOutput: boolean, isFluidPort: boolean, e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
 
     if (isOutput) {
       // Start a pending connection from this output port
-      setPendingConnection({ fromMachineId: machine.id, fromSide: side });
+      // Fluid ports always create pipe connections; belt ports create pipes when Shift is held
+      const connType = isFluidPort ? 'pipe' : (e.evt.shiftKey ? 'pipe' : 'belt');
+      setPendingConnection({ fromMachineId: machine.id, fromSide: side, type: connType });
     } else {
       // Input port — if there's a pending connection, complete it
       if (pendingConnection) {
         // Don't allow self-connections
         if (pendingConnection.fromMachineId !== machine.id) {
-          addConnection(pendingConnection.fromMachineId, pendingConnection.fromSide, machine.id, side, 'belt');
+          addConnection(
+            pendingConnection.fromMachineId,
+            pendingConnection.fromSide,
+            machine.id,
+            side,
+            pendingConnection.type,
+          );
         }
       }
     }
@@ -48,7 +59,7 @@ function MachinePorts({ machine }: { machine: PlacedMachine }) {
         const offset = SIDE_OFFSETS[side];
         // Output ports on top and right; input ports on bottom and left
         const isOutput = side === 'top' || side === 'right';
-        const color = isOutput ? '#4ade80' : '#f87171';
+        const color = isOutput ? PORT_COLORS.output : PORT_COLORS.input;
         const isActive = pendingConnection?.fromMachineId === machine.id && pendingConnection?.fromSide === side;
 
         return (
@@ -60,7 +71,7 @@ function MachinePorts({ machine }: { machine: PlacedMachine }) {
             fill={color}
             stroke={isActive ? '#fff' : '#333'}
             strokeWidth={isActive ? 2 : 1}
-            onClick={(e) => handlePortClick(side, isOutput, e)}
+            onClick={(e) => handlePortClick(side, isOutput, false, e)}
             onMouseEnter={(e) => {
               const container = e.target.getStage()?.container();
               if (container) container.style.cursor = 'pointer';
@@ -72,6 +83,49 @@ function MachinePorts({ machine }: { machine: PlacedMachine }) {
           />
         );
       })}
+      {/* Fluid ports for fluid-handling machines */}
+      {isFluid && (
+        <>
+          {/* Fluid output port — right side, offset toward top */}
+          <Circle
+            key="fluid-out"
+            x={SIDE_OFFSETS.right.x}
+            y={SIDE_OFFSETS.right.y - 12}
+            radius={pendingConnection?.fromMachineId === machine.id && pendingConnection.fromSide === 'right' && pendingConnection.type === 'pipe' ? PORT_RADIUS + 2 : PORT_RADIUS}
+            fill={PORT_COLORS.fluid}
+            stroke={pendingConnection?.fromMachineId === machine.id && pendingConnection.fromSide === 'right' && pendingConnection.type === 'pipe' ? '#fff' : '#1e3a5f'}
+            strokeWidth={1}
+            onClick={(e) => handlePortClick('right', true, true, e)}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'default';
+            }}
+          />
+          {/* Fluid input port — left side, offset toward bottom */}
+          <Circle
+            key="fluid-in"
+            x={SIDE_OFFSETS.left.x}
+            y={SIDE_OFFSETS.left.y + 12}
+            radius={PORT_RADIUS}
+            fill={PORT_COLORS.fluid}
+            stroke="#1e3a5f"
+            strokeWidth={1}
+            onClick={(e) => handlePortClick('left', false, true, e)}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'pointer';
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) container.style.cursor = 'default';
+            }}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -231,22 +285,24 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
   const fromPos = getPortPosition(fromMachine.x, fromMachine.y, conn.fromSide);
   const toPos = getPortPosition(toMachine.x, toMachine.y, conn.toSide);
   const isSelected = selectedConnectionId === conn.id;
+  const isPipe = conn.type === 'pipe';
 
-  // Flow data
+  // Flow data (only for belts; FlowSolver doesn't handle pipes yet)
   const flow = flowResult?.connections[conn.id];
   const itemsPerSec = flow?.itemsPerSec ?? 0;
   const bottlenecked = flow?.bottlenecked ?? false;
   const capacity = flow?.beltCapacity ?? 15;
   const saturation = capacity > 0 ? itemsPerSec / capacity : 0;
 
-  // Color based on saturation
+  // Color: blue for pipes, saturation-based for belts
   const beltColor = bottlenecked ? '#f87171' : saturation > 0.5 ? '#facc15' : '#4ade80';
-  const strokeColor = isSelected ? '#e94560' : beltColor;
+  const pipeColor = '#60a5fa';  // blue
+  const strokeColor = isSelected ? '#e94560' : (isPipe ? pipeColor : beltColor);
 
   // Label position (midpoint)
   const midX = (fromPos.x + toPos.x) / 2;
   const midY = (fromPos.y + toPos.y) / 2;
-  const label = itemsPerSec > 0 ? `${itemsPerSec.toFixed(1)}/s` : '';
+  const label = isPipe ? 'pipe' : (itemsPerSec > 0 ? `${itemsPerSec.toFixed(1)}/s` : '');
 
   return (
     <>
@@ -256,6 +312,7 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
         strokeWidth={isSelected ? 3 : 2}
         pointerLength={8}
         pointerWidth={8}
+        dash={isPipe && !isSelected ? [6, 3] : []}
         onClick={(e) => {
           e.cancelBubble = true;
           selectConnection(conn.id);
@@ -271,7 +328,7 @@ function BeltConnection({ connId, flowResult }: { connId: string; flowResult: Re
           <Text
             text={label}
             fontSize={10}
-            fill={beltColor}
+            fill={isPipe ? pipeColor : beltColor}
             width={36}
             align="center"
             y={-6}
@@ -887,7 +944,7 @@ export function FactoryCanvas() {
       {/* Hint when connecting */}
       {pendingConnection && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-lg border border-factorio-green bg-factorio-panel px-4 py-2 text-sm text-factorio-text-bright shadow-lg z-10">
-          Click an input port (red) to connect (ESC to cancel)
+          Click an input port ({pendingConnection.type === 'pipe' ? 'blue' : 'red'}) to connect (ESC to cancel)
         </div>
       )}
 
@@ -915,7 +972,8 @@ export function FactoryCanvas() {
               {splitters.length > 0 && <span className="text-factorio-text">⑂ {splitters.length} splitters</span>}
               {beacons.length > 0 && <span className="text-factorio-text">📡 {beacons.length} beacons</span>}
               {groups.length > 0 && <span className="text-factorio-text">📦 {groups.length} groups</span>}
-              <span className="text-factorio-text">🔗 {connections.length} belts</span>
+              <span className="text-factorio-text">🔗 {connections.filter(c => c.type === 'belt').length} belts</span>
+              {connections.filter(c => c.type === 'pipe').length > 0 && <span className="text-factorio-text">💧 {connections.filter(c => c.type === 'pipe').length} pipes</span>}
               {flowResult.warnings.length > 0 && (
                 <span className="text-factorio-yellow">⚠️ {flowResult.warnings.length} warnings</span>
               )}
